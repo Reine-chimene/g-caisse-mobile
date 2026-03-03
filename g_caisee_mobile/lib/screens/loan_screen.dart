@@ -16,8 +16,8 @@ class _LoanScreenState extends State<LoanScreen> {
   final TextEditingController _purposeController = TextEditingController();
   
   // Variables de simulation
-  double maxLoan = 500000; // Capacité (viendra de l'API plus tard)
-  double fees = 2500; // Frais de dossier fixes (Halal)
+  double maxLoan = 500000; 
+  double fees = 2500; 
   bool isLoading = false;
 
   @override
@@ -54,25 +54,26 @@ class _LoanScreenState extends State<LoanScreen> {
             // 4. BOUTON D'ACTION
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 55,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: gold,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 5,
                 ),
                 onPressed: isLoading ? null : _submitLoanRequest,
                 child: isLoading 
                   ? const CircularProgressIndicator(color: Colors.black)
-                  : const Text("SOUMETTRE LA DEMANDE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  : const Text("SOUMETTRE LA DEMANDE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
             
             const SizedBox(height: 15),
             const Center(
               child: Text(
-                "Conforme aux principes de la finance islamique.\nSans intérêts (Riba).",
+                "Conforme aux principes de la finance islamique.\nSans intérêts (Riba). Gestion éthique.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 11),
+                style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.5),
               ),
             ),
           ],
@@ -85,11 +86,15 @@ class _LoanScreenState extends State<LoanScreen> {
   Widget _buildCapacityCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.purple.shade900, Colors.purple.shade600]),
+        gradient: LinearGradient(
+          colors: [Colors.purple.shade900, Colors.purple.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,17 +102,24 @@ class _LoanScreenState extends State<LoanScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: const [
-              Text("CAPACITÉ D'EMPRUNT", style: TextStyle(color: Colors.white70, fontSize: 12)),
-              Icon(Icons.account_balance, color: Colors.white),
+              Text("VOTRE CAPACITÉ MAXIMALE", style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1.2)),
+              Icon(Icons.account_balance, color: Colors.white, size: 28),
             ],
           ),
-          const SizedBox(height: 5),
-          Text("${maxLoan.toStringAsFixed(0)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
+          Text("${maxLoan.toStringAsFixed(0)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-            child: const Text("Eligible au prêt Qard Hasan", style: TextStyle(color: Colors.white, fontSize: 11)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.star, color: Colors.amber, size: 14),
+                SizedBox(width: 5),
+                Text("Eligible au prêt Qard Hasan", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500)),
+              ],
+            ),
           ),
         ],
       ),
@@ -122,13 +134,13 @@ class _LoanScreenState extends State<LoanScreen> {
           controller: _amountController,
           keyboardType: TextInputType.number,
           style: const TextStyle(color: Colors.white),
-          onChanged: (val) => setState(() {}), // Rafraîchir le simulateur
+          onChanged: (val) => setState(() {}), 
           decoration: InputDecoration(
             labelText: "Montant souhaité (FCFA)",
             labelStyle: const TextStyle(color: Colors.grey),
-            prefixIcon: Icon(Icons.money, color: gold),
-            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade800), borderRadius: BorderRadius.circular(10)),
-            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: gold), borderRadius: BorderRadius.circular(10)),
+            prefixIcon: Icon(Icons.monetization_on, color: gold),
+            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade800), borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: gold), borderRadius: BorderRadius.circular(12)),
             filled: true,
             fillColor: cardGrey,
           ),
@@ -139,11 +151,13 @@ class _LoanScreenState extends State<LoanScreen> {
           style: const TextStyle(color: Colors.white),
           maxLines: 2,
           decoration: InputDecoration(
-            labelText: "Motif (Commerce, Santé...)",
+            labelText: "Motif du financement",
             labelStyle: const TextStyle(color: Colors.grey),
-            prefixIcon: Icon(Icons.edit_note, color: gold),
-            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade800), borderRadius: BorderRadius.circular(10)),
-            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: gold), borderRadius: BorderRadius.circular(10)),
+            hintText: "Ex: Achat de matériel, Frais de santé...",
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+            prefixIcon: Icon(Icons.description, color: gold),
+            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade800), borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: gold), borderRadius: BorderRadius.circular(12)),
             filled: true,
             fillColor: cardGrey,
           ),
@@ -157,25 +171,28 @@ class _LoanScreenState extends State<LoanScreen> {
     double amount = double.tryParse(_amountController.text) ?? 0;
     
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cardGrey,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         children: [
-          _rowDetail("Montant demandé", "${amount.toStringAsFixed(0)} FCFA"),
-          const SizedBox(height: 10),
-          _rowDetail("Intérêts (0%)", "0 FCFA", isHighlight: true),
-          const SizedBox(height: 10),
-          _rowDetail("Frais de dossier", "${fees.toStringAsFixed(0)} FCFA"),
-          const Divider(color: Colors.grey, height: 20),
+          _rowDetail("Montant du prêt", "${amount.toStringAsFixed(0)} FCFA"),
+          const SizedBox(height: 12),
+          _rowDetail("Taux d'intérêt (Riba)", "0 %", isHighlight: true),
+          const SizedBox(height: 12),
+          _rowDetail("Frais de gestion", "${fees.toStringAsFixed(0)} FCFA"),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 15),
+            child: Divider(color: Colors.white10),
+          ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("TOTAL À REMBOURSER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              Text("${(amount + fees).toStringAsFixed(0)} FCFA", style: TextStyle(color: gold, fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text("TOTAL À REMBOURSER", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+              Text("${(amount + fees).toStringAsFixed(0)} FCFA", style: TextStyle(color: gold, fontWeight: FontWeight.bold, fontSize: 20)),
             ],
           )
         ],
@@ -187,8 +204,8 @@ class _LoanScreenState extends State<LoanScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey)),
-        Text(value, style: TextStyle(color: isHighlight ? Colors.green : Colors.white, fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+        Text(value, style: TextStyle(color: isHighlight ? Colors.greenAccent : Colors.white, fontWeight: isHighlight ? FontWeight.bold : FontWeight.w500)),
       ],
     );
   }
@@ -198,12 +215,16 @@ class _LoanScreenState extends State<LoanScreen> {
     double amount = double.tryParse(_amountController.text) ?? 0;
     
     if (amount <= 0 || _purposeController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Veuillez remplir tous les champs correctement.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Oups ! Veuillez remplir tous les champs."), backgroundColor: Colors.orange)
+      );
       return;
     }
 
     if (amount > maxLoan) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Le montant dépasse votre capacité d'emprunt.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Le montant dépasse votre limite autorisée."), backgroundColor: Colors.redAccent)
+      );
       return;
     }
 
@@ -214,25 +235,40 @@ class _LoanScreenState extends State<LoanScreen> {
       await ApiService.requestIslamicLoan(1, amount, _purposeController.text);
       
       if (mounted) {
-        // Succès
         showDialog(
           context: context,
+          barrierDismissible: false,
           builder: (c) => AlertDialog(
             backgroundColor: cardGrey,
-            icon: Icon(Icons.check_circle, color: gold, size: 50),
-            title: Text("Demande Envoyée", style: TextStyle(color: gold)),
-            content: const Text("Votre dossier est en cours d'analyse. Vous recevrez une réponse sous 24h.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            icon: Icon(Icons.verified_user, color: gold, size: 60),
+            title: Text("Demande Envoyée", style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
+            content: const Text(
+              "Votre dossier est maintenant entre les mains de notre comité d'éthique. Réponse sous 24h.", 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.white70, height: 1.4)
+            ),
             actions: [
-              TextButton(onPressed: () {
-                Navigator.pop(c); // Ferme Dialog
-                Navigator.pop(context); // Retour Accueil
-              }, child: const Text("OK", style: TextStyle(color: Colors.white)))
+              Center(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: gold, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: () {
+                    Navigator.pop(c); // Ferme Dialog
+                    Navigator.pop(context); // Retour Accueil
+                  }, 
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text("COMPRIS", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  )
+                ),
+              ),
+              const SizedBox(height: 10),
             ],
           ),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur de connexion. Réessayez.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur de communication avec le serveur."), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'tontine_details_screen.dart'; // Remplace par ton vrai nom de fichier si différent
+import 'tontine_details_screen.dart'; 
 import 'create_tontine_screen.dart'; 
 
 class TontineListScreen extends StatefulWidget {
@@ -11,7 +11,6 @@ class TontineListScreen extends StatefulWidget {
 }
 
 class _TontineListScreenState extends State<TontineListScreen> {
-  // Variables pour gérer l'état de la liste
   List<dynamic> tontines = [];
   bool isLoading = true;
   final Color gold = const Color(0xFFD4AF37);
@@ -23,7 +22,6 @@ class _TontineListScreenState extends State<TontineListScreen> {
     _fetchTontines();
   }
 
-  // Fonction pour charger les tontines et mettre à jour l'écran
   Future<void> _fetchTontines() async {
     if (!mounted) return;
     
@@ -38,6 +36,7 @@ class _TontineListScreenState extends State<TontineListScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => isLoading = false);
+      debugPrint("Erreur chargement tontines: $e");
     }
   }
 
@@ -46,10 +45,10 @@ class _TontineListScreenState extends State<TontineListScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       
-      // --- APP BAR ---
       appBar: AppBar(
-        title: Text("MES GROUPES", style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
+        title: Text("MES TONTINES", style: TextStyle(color: gold, fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: Colors.black,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
@@ -59,90 +58,89 @@ class _TontineListScreenState extends State<TontineListScreen> {
         ],
       ),
 
-      // --- LE BOUTON CRÉER ---
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: gold,
         onPressed: () {
-          // Navigation vers l'écran de création
           Navigator.push(
             context, 
             MaterialPageRoute(builder: (context) => const CreateTontineScreen()) 
-          ).then((_) {
-            // QUAND ON REVIENT : On rafraîchit la liste !
-            _fetchTontines();
-          });
+          ).then((_) => _fetchTontines()); // Rafraîchit au retour
         },
-        label: const Text("Nouveau Groupe", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        label: const Text("CRÉER UN GROUPE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add, color: Colors.black),
       ),
 
-      // --- LA LISTE ---
       body: isLoading
           ? Center(child: CircularProgressIndicator(color: gold))
           : tontines.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.groups_3, size: 80, color: Colors.grey.shade800),
-                      const SizedBox(height: 10),
-                      const Text("Aucune tontine active", style: TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 5),
-                      Text("Créez votre premier groupe !", style: TextStyle(color: gold)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.only(left: 15, right: 15, top: 15, bottom: 80), // Espace pour le bouton FAB
-                  itemCount: tontines.length,
-                  itemBuilder: (context, i) {
-                    var t = tontines[i];
-                    
-                    // On récupère le montant de la base de données de façon sécurisée
-                    double amount = double.tryParse(t['amount'].toString()) ?? 0.0;
+              ? _buildEmptyState()
+              : RefreshIndicator(
+                  onRefresh: _fetchTontines,
+                  color: gold,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(15, 15, 15, 100),
+                    itemCount: tontines.length,
+                    itemBuilder: (context, i) {
+                      var t = tontines[i];
+                      
+                      // Adapté à ton schéma : amount_to_pay
+                      double amount = double.tryParse(t['amount_to_pay']?.toString() ?? "0") ?? 0.0;
 
-                    return Card(
-                      color: cardGrey,
-                      margin: const EdgeInsets.only(bottom: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        side: BorderSide(color: Colors.white.withOpacity(0.05)),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                        leading: CircleAvatar(
-                          backgroundColor: gold.withOpacity(0.2),
-                          child: Icon(Icons.savings, color: gold),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: cardGrey,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                         ),
-                        title: Text(
-                          t['name'] ?? "Tontine", 
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 5),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_today, size: 12, color: Colors.grey),
-                              const SizedBox(width: 5),
-                              Text(
-                                "${amount.toStringAsFixed(0)} FCFA / ${t['frequency'] ?? 'mois'}", 
-                                style: TextStyle(color: Colors.grey.shade400)
-                              ),
-                            ],
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: gold.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.groups_rounded, color: gold),
                           ),
+                          title: Text(
+                            t['name'] ?? "Tontine sans nom", 
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Text(
+                              "${amount.toStringAsFixed(0)} FCFA • ${t['frequency'] ?? 'Mensuel'}", 
+                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)
+                            ),
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+                          onTap: () {
+                            Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (c) => TontineDetailsScreen(tontine: t))
+                            );
+                          }
                         ),
-                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
-                        onTap: () {
-                          // On entre dans l'écran de détails
-                          Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (c) => TontineDetailsScreen(tontine: t))
-                          );
-                        }
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.layers_clear_outlined, size: 80, color: Colors.white10),
+          const SizedBox(height: 20),
+          const Text("Vous n'avez pas encore de groupe", style: TextStyle(color: Colors.white70, fontSize: 16)),
+          const SizedBox(height: 8),
+          Text("Créez-en un pour commencer à cotiser !", style: TextStyle(color: gold.withValues(alpha: 0.6), fontSize: 13)),
+        ],
+      ),
     );
   }
 }

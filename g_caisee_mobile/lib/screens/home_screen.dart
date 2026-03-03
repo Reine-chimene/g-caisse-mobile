@@ -70,7 +70,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Future<void> _loadUserData() async {
     try {
-      final balance = await ApiService.getUserBalance(1);
+      final balance = await ApiService.getUserBalance(1); // ID 1 par défaut pour la démo
       final score = await ApiService.getTrustScore(1);
       if (mounted) {
         setState(() {
@@ -139,6 +139,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  // ... (Méthodes de dépôt inchangées)
   void _showDepositMethodSelector(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -269,10 +270,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
     
     Navigator.pop(context);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Génération du lien de paiement..."), backgroundColor: Colors.blue)
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Génération du lien de paiement..."), backgroundColor: Colors.blue));
     
     try {
       final response = await ApiService.initiatePayment(phone, amount);
@@ -289,16 +287,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
           Future.delayed(const Duration(seconds: 10), () {
             if (mounted) {
               _loadUserData(); 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Si le paiement est validé, votre solde est mis à jour."), backgroundColor: Colors.green)
-              );
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Si le paiement est validé, votre solde est mis à jour."), backgroundColor: Colors.green));
             }
           });
         } else {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Impossible d'ouvrir la page de paiement."), backgroundColor: Colors.red)
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impossible d'ouvrir la page de paiement."), backgroundColor: Colors.red));
         }
       }
     } catch (e) {
@@ -380,24 +374,75 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  // =====================================
+  // LE VRAI SYSTÈME D'ENVOI D'ARGENT
+  // =====================================
   void _showSendDialog(BuildContext context) {
+    final TextEditingController phoneController = TextEditingController();
+    final TextEditingController amountController = TextEditingController();
+    bool isLoading = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cardGrey,
-        title: Text("Envoyer de l'argent", style: TextStyle(color: gold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            TextField(style: TextStyle(color: Colors.white), decoration: InputDecoration(hintText: "Numéro bénéficiaire", hintStyle: TextStyle(color: Colors.grey))),
-            TextField(style: TextStyle(color: Colors.white), decoration: InputDecoration(hintText: "Montant", hintStyle: TextStyle(color: Colors.grey))),
-          ],
-        ),
-        actions: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: gold), onPressed: () => Navigator.pop(context), child: const Text("Envoyer", style: TextStyle(color: Colors.black)))],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: cardGrey,
+            title: Text("Envoyer de l'argent", style: TextStyle(color: gold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(hintText: "Numéro bénéficiaire", hintStyle: TextStyle(color: Colors.grey)),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(hintText: "Montant", hintStyle: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler", style: TextStyle(color: Colors.grey))),
+              isLoading 
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: gold),
+                    onPressed: () async {
+                      final phone = phoneController.text;
+                      final amount = double.tryParse(amountController.text) ?? 0;
+                      
+                      if (phone.isNotEmpty && amount > 0) {
+                        setDialogState(() => isLoading = true);
+                        try {
+                          await ApiService.transferMoney(1, phone, amount); // ID 1 = toi
+                          if (!mounted) return;
+                          Navigator.pop(context); // Fermer la boite
+                          _loadUserData(); // Rafraîchir le solde
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transfert réussi !"), backgroundColor: Colors.green));
+                        } catch (e) {
+                          setDialogState(() => isLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+                        }
+                      }
+                    }, 
+                    child: const Text("Envoyer", style: TextStyle(color: Colors.black)),
+                  )
+            ],
+          );
+        }
       ),
     );
   }
 
+  // =====================================
+  // L'HISTORIQUE RENDU BEAU ET LISIBLE
+  // =====================================
   void _showHistoryDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -424,11 +469,24 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     : ListView.builder(
                         itemCount: txs.length,
                         itemBuilder: (context, i) {
+                          // Embellissement des données de la base
+                          String rawType = txs[i]['description'] ?? "Inconnu";
+                          String title = "Transaction";
+                          Color amountColor = Colors.green;
+                          String sign = "+";
+                          IconData icon = Icons.payment;
+
+                          if (rawType == 'transfer_out') { title = "Envoi d'argent"; amountColor = Colors.red; sign = "-"; icon = Icons.arrow_upward; }
+                          else if (rawType == 'transfer_in') { title = "Argent reçu"; amountColor = Colors.green; sign = "+"; icon = Icons.arrow_downward; }
+                          else if (rawType == 'deposit') { title = "Dépôt / Recharge"; icon = Icons.account_balance_wallet; }
+                          else if (rawType == 'cotisation') { title = "Cotisation Tontine"; icon = Icons.pie_chart; }
+                          else { title = rawType; }
+
                           return ListTile(
-                            leading: Icon(Icons.payment, color: gold),
-                            title: Text(txs[i]['description'] ?? "Recharge", style: const TextStyle(color: Colors.white)),
+                            leading: Icon(icon, color: gold),
+                            title: Text(title, style: const TextStyle(color: Colors.white)),
                             subtitle: Text(txs[i]['created_at'].toString().split('T')[0], style: const TextStyle(color: Colors.grey)),
-                            trailing: Text("+ ${txs[i]['amount']} FCFA", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                            trailing: Text("$sign ${txs[i]['amount']} FCFA", style: TextStyle(color: amountColor, fontWeight: FontWeight.bold)),
                           );
                         },
                       ),

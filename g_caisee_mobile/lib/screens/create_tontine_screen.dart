@@ -26,7 +26,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Admin ID hardcodé à 1 pour la démo (sera dynamique plus tard avec l'auth)
+      // Admin ID hardcodé à 1 pour la démo
       int adminId = 1; 
       double amount = double.parse(_amountController.text);
       double commission = 2.0; 
@@ -42,7 +42,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('✅ Tontine créée avec succès !'),
+            content: const Text('✅ Tontine créée avec succès !', style: TextStyle(color: Colors.black)),
             backgroundColor: gold,
             behavior: SnackBarBehavior.floating,
           ),
@@ -82,7 +82,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: gold.withOpacity(0.1),
+                    color: gold.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                     border: Border.all(color: gold, width: 2),
                   ),
@@ -132,7 +132,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
                   ),
                   style: const TextStyle(color: Colors.white, fontSize: 16),
                   items: const [
-                    DropdownMenuItem(value: 'journalier', child: Text("Journalière (Jour)")), // 👈 Voici le nouvel ajout !
+                    DropdownMenuItem(value: 'journalier', child: Text("Journalière (Jour)")),
                     DropdownMenuItem(value: 'hebdo', child: Text("Hebdomadaire (Semaine)")),
                     DropdownMenuItem(value: 'mensuel', child: Text("Mensuel (Mois)")),
                   ], 
@@ -146,9 +146,9 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: const [

@@ -12,7 +12,6 @@ class AuctionScreen extends StatefulWidget {
 class _AuctionScreenState extends State<AuctionScreen> {
   final Color gold = const Color(0xFFD4AF37);
   final Color cardGrey = const Color(0xFF1E1E1E);
-  bool isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +62,7 @@ class _AuctionScreenState extends State<AuctionScreen> {
       decoration: BoxDecoration(
         color: cardGrey,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: gold.withOpacity(0.3)),
+        border: Border.all(color: gold.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,7 +74,7 @@ class _AuctionScreenState extends State<AuctionScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(5)),
+                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(5)),
                 child: Row(
                   children: const [
                     Icon(Icons.timer, color: Colors.red, size: 14),
@@ -129,43 +128,75 @@ class _AuctionScreenState extends State<AuctionScreen> {
 
   void _showBidDialog(BuildContext context, Map auction) {
     TextEditingController bidController = TextEditingController();
+    bool isSubmitting = false; // Pour gérer l'animation de chargement
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cardGrey,
-        title: Text("Nouvelle Mise", style: TextStyle(color: gold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Votre mise doit être supérieure à l'offre actuelle.", 
-              style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 15),
-            TextField(
-              controller: bidController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: "Montant FCFA",
-                hintStyle: const TextStyle(color: Colors.grey),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold)),
-              ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: cardGrey,
+            title: Text("Nouvelle Mise", style: TextStyle(color: gold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Votre mise doit être supérieure à l'offre actuelle.", 
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: bidController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Montant FCFA",
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold)),
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold)),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: gold),
-            onPressed: () {
-              // Ici tu appelleras ApiService.placeBid(...)
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Mise enregistrée !"))
-              );
-            },
-            child: const Text("CONFIRMER", style: TextStyle(color: Colors.black)),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text("Annuler", style: TextStyle(color: Colors.grey))
+              ),
+              isSubmitting
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 20.0),
+                    child: SizedBox(
+                      width: 24, height: 24,
+                      child: CircularProgressIndicator(color: gold, strokeWidth: 2)
+                    ),
+                  )
+                : ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: gold),
+                    onPressed: () async {
+                      if (bidController.text.isEmpty) return;
+                      
+                      // 1. On lance l'animation de chargement
+                      setDialogState(() => isSubmitting = true);
+                      
+                      // 2. On fait "semblant" de contacter le serveur pendant 1.5 secondes
+                      await Future.delayed(const Duration(milliseconds: 1500));
+                      
+                      // 3. On vérifie que la fenêtre est toujours ouverte avant d'agir
+                      if (!context.mounted) return;
+                      
+                      // 4. On ferme la fenêtre et on affiche le succès
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Mise enregistrée avec succès !"), 
+                          backgroundColor: Colors.green
+                        )
+                      );
+                    },
+                    child: const Text("CONFIRMER", style: TextStyle(color: Colors.black)),
+                  ),
+            ],
+          );
+        }
       ),
     );
   }

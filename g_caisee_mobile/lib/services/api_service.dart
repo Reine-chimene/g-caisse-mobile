@@ -27,6 +27,48 @@ class ApiService {
     if (res.statusCode != 201) throw Exception("Erreur d'inscription");
   }
 
+  // ==========================================
+  // NOUVELLES MÉTHODES (TRANSFERT, DÉPÔT, PROFIL)
+  // ==========================================
+
+  static Future<void> updateProfile(int userId, String fullname, String phone) async {
+    final res = await http.put(
+      Uri.parse('$baseUrl/users/$userId'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"fullname": fullname, "phone": phone}),
+    );
+    if (res.statusCode != 200) throw Exception("Erreur de mise à jour du profil");
+  }
+
+  static Future<void> transferMoney(int senderId, String receiverPhone, double amount) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/transfer'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "sender_id": senderId,
+        "receiver_phone": receiverPhone,
+        "amount": amount
+      }),
+    );
+    if (res.statusCode != 200) {
+      var errorData = jsonDecode(res.body);
+      throw Exception(errorData['message'] ?? "Erreur lors du transfert");
+    }
+  }
+
+  static Future<void> depositMoney(int userId, double amount) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/deposit'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"user_id": userId, "amount": amount}),
+    );
+    if (res.statusCode != 200) throw Exception("Erreur lors du dépôt");
+  }
+
+  // ==========================================
+  // TONTINES, MESSAGES & AUTRES
+  // ==========================================
+
   static Future<List<dynamic>> getTontines() async {
     final res = await http.get(Uri.parse('$baseUrl/tontines'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
@@ -142,6 +184,49 @@ class ApiService {
     if (res.statusCode != 200) throw Exception("Erreur d'envoi WhatsApp");
   }
 
+// Récupérer les objectifs d'épargne (ou solde global épargne)
+  static Future<double> getSavingsBalance(int userId) async {
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/savings'));
+    if (res.statusCode == 200) {
+      List data = jsonDecode(res.body);
+      // On fait la somme de tous les montants épargnés
+      double total = 0;
+      for (var goal in data) {
+        total += double.tryParse(goal['current_amount'].toString()) ?? 0.0;
+      }
+      return total;
+    }
+    return 0.0;
+  }
+
+  // Effectuer un dépôt sur l'épargne
+  static Future<void> depositToSavings(int userId, double amount) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/deposit'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"user_id": userId, "amount": amount}),
+    );
+    if (res.statusCode != 200) throw Exception("Échec du dépôt d'épargne");
+  }
+
+  // Récupérer l'historique spécifique à l'épargne
+  static Future<List<dynamic>> getSavingsTransactions(int userId) async {
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
+    if (res.statusCode == 200) {
+      List allTxs = jsonDecode(res.body);
+      // On ne garde que les transactions de type 'deposit' ou 'saving'
+      return allTxs.where((tx) => tx['type'] == 'deposit' || tx['type'] == 'saving').toList();
+    }
+    return [];
+  }
+
+static Future<void> leaveTontine(int tontineId, int userId) async {
+  final res = await http.delete(
+    Uri.parse('$baseUrl/tontines/$tontineId/members/$userId'),
+  );
+  if (res.statusCode != 200) throw Exception("Erreur lors de la sortie de la tontine");
+}
+
   static Future<void> requestIslamicLoan(int userId, double amount, String purpose) async {
     final res = await http.post(
       Uri.parse('$baseUrl/loans/islamic'),
@@ -156,9 +241,9 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getTransactions(int userId) async {
-  final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
-  return res.statusCode == 200 ? jsonDecode(res.body) : [];
-}
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
 
   static Future<int> getTrustScore(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/trust-score'));
