@@ -7,6 +7,7 @@ import 'social_screen.dart';
 import 'loan_screen.dart';
 import 'create_tontine_screen.dart';
 import 'profile_screen.dart'; 
+import 'auction_screen.dart'; // 👈 On importe le vrai fichier !
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -68,17 +69,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _loadUserData();
   }
 
+  // ✅ CETTE FONCTION APPELLE MAINTENANT LE SERVEUR RENDER
   Future<void> _loadUserData() async {
     try {
-      final balance = await ApiService.getUserBalance(1); // ID 1 par défaut pour la démo
+      // Note : Dans une vraie version, on utiliserait l'ID de l'utilisateur connecté
+      final balance = await ApiService.getUserBalance(1); 
       final score = await ApiService.getTrustScore(1);
+      
       if (mounted) {
         setState(() {
           totalBalance = balance;
           trustScore = score;
         });
       }
-    } catch (e) { debugPrint(e.toString()); }
+    } catch (e) { 
+      debugPrint("Erreur de chargement des données : ${e.toString()}"); 
+    }
   }
 
   @override
@@ -129,7 +135,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 _serviceCard(context, Icons.add_circle_outline, "Créer Tontine", gold, const CreateTontineScreen()),
                 _serviceCard(context, Icons.handshake, "Prêt Islamic", Colors.purple, const LoanScreen()),
                 _serviceCard(context, Icons.favorite, "Social", Colors.pink, const SocialScreen()),
-                _serviceCard(context, Icons.rocket_launch, "Investir", Colors.orange, const InvestmentScreen()),
+                _serviceCard(context, Icons.rocket_launch, "Investir", Colors.orange, null), // Investissement bientôt
                 _serviceCard(context, Icons.gavel, "Enchères", Colors.cyan, const AuctionScreen(tontineId: 1)),
               ],
             ),
@@ -139,7 +145,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // ... (Méthodes de dépôt inchangées)
+  // --- MÉTHODES DE PAIEMENT ---
   void _showDepositMethodSelector(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -261,45 +267,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   void _processPayment(String phone, String amountText) async {
     final amount = double.tryParse(amountText);
-    
     if (amount == null || amount <= 0 || phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Veuillez entrer un montant et un numéro valides."), backgroundColor: Colors.red)
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Champs invalides."), backgroundColor: Colors.red));
       return;
     }
-    
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Génération du lien de paiement..."), backgroundColor: Colors.blue));
-    
     try {
       final response = await ApiService.initiatePayment(phone, amount);
-
       if (response['success'] == true) {
-        if (!mounted) return;
-        
-        final urlString = response['payment_url'];
-        final Uri paymentUri = Uri.parse(urlString);
-
+        final Uri paymentUri = Uri.parse(response['payment_url']);
         if (await canLaunchUrl(paymentUri)) {
           await launchUrl(paymentUri, mode: LaunchMode.externalApplication);
-          
-          Future.delayed(const Duration(seconds: 10), () {
-            if (mounted) {
-              _loadUserData(); 
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Si le paiement est validé, votre solde est mis à jour."), backgroundColor: Colors.green));
-            }
-          });
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impossible d'ouvrir la page de paiement."), backgroundColor: Colors.red));
+          Future.delayed(const Duration(seconds: 10), () => _loadUserData());
         }
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur serveur : ${e.toString().replaceAll('Exception: ', '')}"), backgroundColor: Colors.red)
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : ${e.toString()}"), backgroundColor: Colors.red));
     }
   }
 
@@ -416,18 +399,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     onPressed: () async {
                       final phone = phoneController.text;
                       final amount = double.tryParse(amountController.text) ?? 0;
-                      
                       if (phone.isNotEmpty && amount > 0) {
                         setDialogState(() => isLoading = true);
                         try {
-                          await ApiService.transferMoney(1, phone, amount); // ID 1 = toi
+                          await ApiService.transferMoney(1, phone, amount);
                           if (!mounted) return;
-                          Navigator.pop(context); // Fermer la boite
-                          _loadUserData(); // Rafraîchir le solde
+                          Navigator.pop(context);
+                          _loadUserData();
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transfert réussi !"), backgroundColor: Colors.green));
                         } catch (e) {
                           setDialogState(() => isLoading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
                         }
                       }
                     }, 
@@ -440,9 +422,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // =====================================
-  // L'HISTORIQUE RENDU BEAU ET LISIBLE
-  // =====================================
   void _showHistoryDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -469,82 +448,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     : ListView.builder(
                         itemCount: txs.length,
                         itemBuilder: (context, i) {
-                          // Embellissement des données de la base
-                          String rawType = txs[i]['description'] ?? "Inconnu";
-                          String title = "Transaction";
-                          Color amountColor = Colors.green;
-                          String sign = "+";
-                          IconData icon = Icons.payment;
-
-                          if (rawType == 'transfer_out') { title = "Envoi d'argent"; amountColor = Colors.red; sign = "-"; icon = Icons.arrow_upward; }
-                          else if (rawType == 'transfer_in') { title = "Argent reçu"; amountColor = Colors.green; sign = "+"; icon = Icons.arrow_downward; }
-                          else if (rawType == 'deposit') { title = "Dépôt / Recharge"; icon = Icons.account_balance_wallet; }
-                          else if (rawType == 'cotisation') { title = "Cotisation Tontine"; icon = Icons.pie_chart; }
-                          else { title = rawType; }
-
+                          String title = txs[i]['description'] ?? "Transaction";
                           return ListTile(
-                            leading: Icon(icon, color: gold),
+                            leading: Icon(Icons.payment, color: gold),
                             title: Text(title, style: const TextStyle(color: Colors.white)),
                             subtitle: Text(txs[i]['created_at'].toString().split('T')[0], style: const TextStyle(color: Colors.grey)),
-                            trailing: Text("$sign ${txs[i]['amount']} FCFA", style: TextStyle(color: amountColor, fontWeight: FontWeight.bold)),
+                            trailing: Text("${txs[i]['amount']} FCFA", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                           );
                         },
                       ),
                 ),
               ],
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class InvestmentScreen extends StatelessWidget {
-  const InvestmentScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text("Investissements", style: TextStyle(color: Colors.white))),
-      body: const Center(child: Text("Bientôt disponible : Financez des projets !", style: TextStyle(color: Colors.white))),
-    );
-  }
-}
-
-class AuctionScreen extends StatelessWidget {
-  final int tontineId;
-  const AuctionScreen({super.key, required this.tontineId});
-  @override
-  Widget build(BuildContext context) {
-    final Color gold = const Color(0xFFD4AF37);
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: Text("ENCHÈRES", style: TextStyle(color: gold)), backgroundColor: Colors.black),
-      body: FutureBuilder<List<dynamic>>(
-        future: ApiService.getAuctions(tontineId),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("0 Enchère en cours", style: TextStyle(color: Colors.grey)));
-          }
-          return ListView.builder(
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, i) {
-              var auction = snapshot.data![i];
-              return Card(
-                color: const Color(0xFF1C1C1E),
-                margin: const EdgeInsets.all(10),
-                child: ListTile(
-                  title: Text("Cycle n°${auction['cycle_number']}", style: const TextStyle(color: Colors.white)),
-                  subtitle: Text("Mise min : ${auction['minimum_bid']} FCFA", style: const TextStyle(color: Colors.grey)),
-                  trailing: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: gold),
-                    onPressed: () {}, 
-                    child: const Text("MISER", style: TextStyle(color: Colors.black)),
-                  ),
-                ),
-              );
-            },
           );
         },
       ),
