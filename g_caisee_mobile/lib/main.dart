@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart'; 
+import 'screens/welcome_screen.dart'; // 👈 On importe l'écran de bienvenue
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key}); // Correction du paramètre key
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -14,10 +14,11 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'G-Caisse',
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
+        brightness: Brightness.light, 
+        primaryColor: const Color(0xFFD4AF37),
+        scaffoldBackgroundColor: Colors.white,
       ),
-      home: LoginScreen(), // Démarre sur la connexion
+      home: const WelcomeScreen(), // 👈 ICI on démarre sur WelcomeScreen !
     );
   }
 }

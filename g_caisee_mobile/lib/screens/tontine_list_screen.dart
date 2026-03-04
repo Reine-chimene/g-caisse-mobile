@@ -4,7 +4,10 @@ import 'tontine_details_screen.dart';
 import 'create_tontine_screen.dart'; 
 
 class TontineListScreen extends StatefulWidget {
-  const TontineListScreen({super.key});
+  // NOUVEAUTÉ : La page EXIGE le vrai ID de l'utilisateur
+  final int userId; 
+
+  const TontineListScreen({super.key, required this.userId});
 
   @override
   State<TontineListScreen> createState() => _TontineListScreenState();
@@ -13,8 +16,12 @@ class TontineListScreen extends StatefulWidget {
 class _TontineListScreenState extends State<TontineListScreen> {
   List<dynamic> tontines = [];
   bool isLoading = true;
-  final Color gold = const Color(0xFFD4AF37);
-  final Color cardGrey = const Color(0xFF1E1E1E);
+  
+  // Couleurs "Mode Jour" (Style Banque)
+  final Color primaryColor = const Color(0xFFD4AF37);
+  final Color backgroundColor = const Color(0xFFF5F6F8);
+  final Color cardColor = Colors.white;
+  final Color textColor = const Color(0xFF1A1A1A);
 
   @override
   void initState() {
@@ -27,7 +34,9 @@ class _TontineListScreenState extends State<TontineListScreen> {
     
     setState(() => isLoading = true); 
     try {
-      final data = await ApiService.getTontines();
+      // NOUVEAUTÉ : On passe le vrai userId au serveur !
+      final data = await ApiService.getTontines(widget.userId); 
+      
       if (mounted) {
         setState(() {
           tontines = data;
@@ -43,83 +52,110 @@ class _TontineListScreenState extends State<TontineListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: backgroundColor,
       
       appBar: AppBar(
-        title: Text("MES TONTINES", style: TextStyle(color: gold, fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: Colors.black,
+        title: Text("Mes Tontines", style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18)),
+        backgroundColor: backgroundColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        centerTitle: true,
+        iconTheme: IconThemeData(color: textColor),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh, color: textColor),
             onPressed: _fetchTontines,
           )
         ],
       ),
 
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: gold,
+        backgroundColor: primaryColor,
+        elevation: 4,
         onPressed: () {
           Navigator.push(
             context, 
             MaterialPageRoute(builder: (context) => const CreateTontineScreen()) 
-          ).then((_) => _fetchTontines()); // Rafraîchit au retour
+          ).then((_) => _fetchTontines()); // Rafraîchit au retour si on a créé une tontine
         },
-        label: const Text("CRÉER UN GROUPE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        icon: const Icon(Icons.add, color: Colors.black),
+        label: const Text("CRÉER UN GROUPE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.add, color: Colors.white),
       ),
 
       body: isLoading
-          ? Center(child: CircularProgressIndicator(color: gold))
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : tontines.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
                   onRefresh: _fetchTontines,
-                  color: gold,
+                  color: primaryColor,
                   child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(15, 15, 15, 100),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
                     itemCount: tontines.length,
                     itemBuilder: (context, i) {
                       var t = tontines[i];
-                      
-                      // Adapté à ton schéma : amount_to_pay
                       double amount = double.tryParse(t['amount_to_pay']?.toString() ?? "0") ?? 0.0;
 
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
+                        margin: const EdgeInsets.only(bottom: 15),
                         decoration: BoxDecoration(
-                          color: cardGrey,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           leading: Container(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: gold.withValues(alpha: 0.1),
+                              color: primaryColor.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(Icons.groups_rounded, color: gold),
+                            child: Icon(Icons.groups_rounded, color: primaryColor, size: 28),
                           ),
                           title: Text(
                             t['name'] ?? "Tontine sans nom", 
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16)
                           ),
                           subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 5),
-                            child: Text(
-                              "${amount.toStringAsFixed(0)} FCFA • ${t['frequency'] ?? 'Mensuel'}", 
-                              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              children: [
+                                Icon(Icons.monetization_on, size: 14, color: Colors.grey[500]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "${amount.toStringAsFixed(0)} FCFA", 
+                                  style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600, fontSize: 13)
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.calendar_today, size: 12, color: Colors.grey[400]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "${t['frequency'] ?? 'Mensuel'}", 
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 12)
+                                ),
+                              ],
                             ),
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
-                          onTap: () {
-                            Navigator.push(
+                          trailing: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
+                            child: Icon(Icons.arrow_forward_ios, color: Colors.grey[400], size: 14)
+                          ),
+                          
+                          onTap: () async {
+                            final result = await Navigator.push(
                               context, 
-                              MaterialPageRoute(builder: (c) => TontineDetailsScreen(tontine: t))
+                              MaterialPageRoute(builder: (c) => TontineDetailsScreen(
+                                tontine: t,
+                                userId: widget.userId // NOUVEAUTÉ : On transmet l'ID au détail
+                              ))
                             );
+                            
+                            // Si l'utilisateur a cliqué sur Quitter, on rafraîchit la liste !
+                            if (result == true) {
+                              _fetchTontines();
+                            }
                           }
                         ),
                       );
@@ -134,11 +170,19 @@ class _TontineListScreenState extends State<TontineListScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.layers_clear_outlined, size: 80, color: Colors.white10),
-          const SizedBox(height: 20),
-          const Text("Vous n'avez pas encore de groupe", style: TextStyle(color: Colors.white70, fontSize: 16)),
-          const SizedBox(height: 8),
-          Text("Créez-en un pour commencer à cotiser !", style: TextStyle(color: gold.withValues(alpha: 0.6), fontSize: 13)),
+          Container(
+            padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20)]),
+            child: Icon(Icons.groups_outlined, size: 80, color: Colors.grey[300]),
+          ),
+          const SizedBox(height: 30),
+          Text("Aucun groupe pour le moment", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Text(
+            "Créez ou rejoignez une tontine\npour commencer à cotiser.", 
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[500], fontSize: 14, height: 1.5)
+          ),
         ],
       ),
     );

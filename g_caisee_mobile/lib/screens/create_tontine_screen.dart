@@ -11,26 +11,39 @@ class CreateTontineScreen extends StatefulWidget {
 class _CreateTontineScreenState extends State<CreateTontineScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _chiefController = TextEditingController(); // 👈 Nouveau champ pour le chef
   final TextEditingController _amountController = TextEditingController();
   
-  // Couleurs
-  final Color gold = const Color(0xFFD4AF37);
-  final Color cardGrey = const Color(0xFF1E1E1E);
+  // Couleurs "Style Banque" (Mode Jour)
+  final Color primaryColor = const Color(0xFFD4AF37); // Doré
+  final Color backgroundColor = Colors.white;
+  final Color textColor = const Color(0xFF1A1A1A);
+  final Color fieldColor = const Color(0xFFF5F6F8); // Gris très clair
 
   String _frequency = 'mensuel'; 
   bool _isLoading = false;
+  bool _acceptRules = false; // 👈 Nouvelle variable pour la case à cocher
 
   void _submitTontine() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Double vérification de sécurité
+    if (!_acceptRules) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ Vous devez accepter les conditions.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // Admin ID hardcodé à 1 pour la démo
+      // Admin ID hardcodé à 1 pour la démo (le chef de la tontine)
       int adminId = 1; 
       double amount = double.parse(_amountController.text);
       double commission = 2.0; 
 
+      // Appel API (Le nom du chef reste dans l'UI pour la démo, l'API utilise adminId)
       await ApiService.createTontine(
         _nameController.text,
         adminId,
@@ -41,9 +54,9 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('✅ Tontine créée avec succès !', style: TextStyle(color: Colors.black)),
-            backgroundColor: gold,
+          const SnackBar(
+            content: Text('✅ Tontine créée avec succès !'),
+            backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -64,123 +77,177 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: Text("NOUVELLE TONTINE", style: TextStyle(color: gold, fontSize: 16, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text("Nouvelle Tontine", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+        backgroundColor: backgroundColor,
+        elevation: 0,
+        iconTheme: IconThemeData(color: textColor),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // En-tête visuel
+              // --- EN-TÊTE VISUEL ---
               Center(
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: gold.withValues(alpha: 0.1),
+                    color: primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
-                    border: Border.all(color: gold, width: 2),
                   ),
-                  child: Icon(Icons.groups_3, size: 50, color: gold),
+                  child: Icon(Icons.groups_rounded, size: 50, color: primaryColor),
                 ),
+              ),
+              const SizedBox(height: 10),
+              Center(
+                child: Text("Créer un groupe de tontine", style: TextStyle(color: Colors.grey[600], fontSize: 15)),
               ),
               const SizedBox(height: 30),
 
-              const Text("Détails du groupe", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
+              Text("Détails du groupe", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
 
-              // Champ Nom
+              // --- CHAMP NOM DU GROUPE ---
+              _buildInputLabel("Nom du Groupe"),
+              const SizedBox(height: 8),
               _buildTextField(
                 controller: _nameController,
-                label: "Nom du Groupe",
-                icon: Icons.edit,
+                hint: "Ex: Tontine Familiale",
+                icon: Icons.edit_outlined,
                 validator: (v) => v!.isEmpty ? "Nom obligatoire" : null,
               ),
               const SizedBox(height: 20),
 
-              // Champ Montant
+              // --- CHAMP NOM DU CHEF ---
+              _buildInputLabel("Nom du Chef de Tontine"),
+              const SizedBox(height: 8),
+              _buildTextField(
+                controller: _chiefController,
+                hint: "Ex: Reine Ngono",
+                icon: Icons.person_outline,
+                validator: (v) => v!.isEmpty ? "Le nom du chef est obligatoire" : null,
+              ),
+              const SizedBox(height: 20),
+
+              // --- CHAMP MONTANT ---
+              _buildInputLabel("Montant par tour (FCFA)"),
+              const SizedBox(height: 8),
               _buildTextField(
                 controller: _amountController,
-                label: "Montant par tour (FCFA)",
-                icon: Icons.monetization_on,
+                hint: "Ex: 10000",
+                icon: Icons.monetization_on_outlined,
                 isNumber: true,
                 validator: (v) => v!.isEmpty ? "Montant obligatoire" : null,
               ),
               const SizedBox(height: 20),
 
-              // Dropdown Fréquence
+              // --- DROPDOWN FRÉQUENCE ---
+              _buildInputLabel("Fréquence des cotisations"),
+              const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
                 decoration: BoxDecoration(
-                  color: cardGrey,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade800),
+                  color: fieldColor,
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: DropdownButtonFormField<String>(
                   value: _frequency,
-                  dropdownColor: cardGrey,
-                  decoration: const InputDecoration(
+                  dropdownColor: Colors.white,
+                  icon: Icon(Icons.keyboard_arrow_down, color: Colors.grey[600]),
+                  decoration: InputDecoration(
                     border: InputBorder.none,
-                    prefixIcon: Icon(Icons.timer, color: Colors.grey),
-                    labelText: "Fréquence des cotisations",
-                    labelStyle: TextStyle(color: Colors.grey),
+                    prefixIcon: Icon(Icons.calendar_today_outlined, color: Colors.grey[500]),
                   ),
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: TextStyle(color: textColor, fontSize: 16),
                   items: const [
-                    DropdownMenuItem(value: 'journalier', child: Text("Journalière (Jour)")),
-                    DropdownMenuItem(value: 'hebdo', child: Text("Hebdomadaire (Semaine)")),
-                    DropdownMenuItem(value: 'mensuel', child: Text("Mensuel (Mois)")),
+                    DropdownMenuItem(value: 'journalier', child: Text("Journalière (Chaque jour)")),
+                    DropdownMenuItem(value: 'hebdo', child: Text("Hebdomadaire (Chaque semaine)")),
+                    DropdownMenuItem(value: 'mensuel', child: Text("Mensuelle (Chaque mois)")),
                   ], 
                   onChanged: (val) => setState(() => _frequency = val!),
                 ),
               ),
+              const SizedBox(height: 25),
 
-              const SizedBox(height: 30),
-
-              // Note sur la commission
+              // --- INFO COMMISSION ---
               Container(
-                padding: const EdgeInsets.all(15),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                  color: const Color(0xFFE3F2FD), // Bleu très clair
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
                 ),
                 child: Row(
-                  children: const [
-                    Icon(Icons.info, color: Colors.blue),
-                    SizedBox(width: 10),
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        "Une commission de 2% sera appliquée pour la maintenance de la plateforme.",
-                        style: TextStyle(color: Colors.blueAccent, fontSize: 12),
+                        "Une commission de 2% sera appliquée pour la sécurité et la maintenance de la plateforme G-Caisse.",
+                        style: TextStyle(color: Colors.blue[800], fontSize: 13),
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 25),
 
-              const SizedBox(height: 30),
+              // --- CASE À COCHER (VALIDATION DES RÈGLES) ---
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: _acceptRules ? primaryColor : Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CheckboxListTile(
+                  value: _acceptRules,
+                  activeColor: primaryColor,
+                  checkColor: Colors.white,
+                  title: RichText(
+                    text: TextSpan(
+                      text: "Je confirme être le chef de cette tontine et ",
+                      style: TextStyle(color: textColor, fontSize: 13),
+                      children: [
+                        TextSpan(
+                          text: "j'accepte le règlement intérieur ainsi que les conditions de gestion.",
+                          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  onChanged: (val) => setState(() => _acceptRules = val!),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+                ),
+              ),
+              const SizedBox(height: 35),
 
-              // Bouton Valider
+              // --- BOUTON VALIDER ---
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 56,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submitTontine,
+                  // Le bouton est inactif (null) si la case n'est pas cochée ou si ça charge
+                  onPressed: (_acceptRules && !_isLoading) ? _submitTontine : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: gold,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    backgroundColor: primaryColor,
+                    disabledBackgroundColor: Colors.grey[300], // Couleur quand c'est grisé
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
                   ),
                   child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.black)
-                    : const Text("LANCER LA TONTINE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        "LANCER LA TONTINE", 
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                      ),
                 ),
-              )
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -188,10 +255,15 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
     );
   }
 
-  // Widget personnalisé pour les champs de texte
+  // --- WIDGETS PERSONNALISÉS ---
+
+  Widget _buildInputLabel(String label) {
+    return Text(label, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 14));
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
-    required String label,
+    required String hint,
     required IconData icon,
     bool isNumber = false,
     String? Function(String?)? validator,
@@ -199,25 +271,17 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: textColor, fontSize: 16),
       decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey),
-        prefixIcon: Icon(icon, color: gold),
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey[400]),
+        prefixIcon: Icon(icon, color: Colors.grey[500]),
         filled: true,
-        fillColor: cardGrey,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade800),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: gold),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
+        fillColor: fieldColor,
+        contentPadding: const EdgeInsets.symmetric(vertical: 18),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryColor, width: 1.5)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.red, width: 1)),
       ),
       validator: validator,
     );

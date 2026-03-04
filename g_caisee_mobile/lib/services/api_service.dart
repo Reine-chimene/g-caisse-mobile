@@ -69,8 +69,9 @@ class ApiService {
   // TONTINES, MESSAGES & AUTRES
   // ==========================================
 
-  static Future<List<dynamic>> getTontines() async {
-    final res = await http.get(Uri.parse('$baseUrl/tontines'));
+  // ✅ MODIFIÉ : On passe l'ID de l'utilisateur pour ne récupérer que SES tontines
+  static Future<List<dynamic>> getTontines(int userId) async {
+    final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
@@ -92,6 +93,18 @@ class ApiService {
   static Future<List<dynamic>> getTontineMembers(int tontineId) async {
     final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/members'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  // ✅ MODIFIÉ : Nouvelle route correcte pour quitter la tontine
+  static Future<void> leaveTontine(int tontineId, int userId) async {
+    final res = await http.delete(
+      Uri.parse('$baseUrl/tontines/$tontineId/leave'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"user_id": userId}), // L'ID est passé dans le body
+    );
+    if (res.statusCode != 200) {
+      throw Exception("Erreur lors de la sortie de la tontine");
+    }
   }
 
   static Future<double> getUserBalance(int userId) async {
@@ -184,7 +197,7 @@ class ApiService {
     if (res.statusCode != 200) throw Exception("Erreur d'envoi WhatsApp");
   }
 
-// Récupérer les objectifs d'épargne (ou solde global épargne)
+  // Récupérer les objectifs d'épargne (ou solde global épargne)
   static Future<double> getSavingsBalance(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/savings'));
     if (res.statusCode == 200) {
@@ -219,13 +232,6 @@ class ApiService {
     }
     return [];
   }
-
-static Future<void> leaveTontine(int tontineId, int userId) async {
-  final res = await http.delete(
-    Uri.parse('$baseUrl/tontines/$tontineId/members/$userId'),
-  );
-  if (res.statusCode != 200) throw Exception("Erreur lors de la sortie de la tontine");
-}
 
   static Future<void> requestIslamicLoan(int userId, double amount, String purpose) async {
     final res = await http.post(
