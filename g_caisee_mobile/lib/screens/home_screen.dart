@@ -7,7 +7,6 @@ import 'social_screen.dart';
 import 'loan_screen.dart';
 import 'create_tontine_screen.dart';
 import 'profile_screen.dart'; 
-import 'auction_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -27,10 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _pages = <Widget>[
       HomeDashboard(userData: widget.userData),     
-      
-      // C'EST ICI LA LIGNE IMPORTANTE POUR LES TONTINES
       TontineListScreen(userId: widget.userData['id']), 
-      
       const SavingScreen(),      
       ProfileScreen(userData: widget.userData), 
     ];
@@ -171,9 +167,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 mainAxisSpacing: 15,
                 crossAxisSpacing: 15,
                 children: [
-                  _serviceCard(context, Icons.group_add_rounded, "Créer Tontine", gold, const CreateTontineScreen()),
+                  // ✅ CORRECTION APPLIQUÉE ICI : On passe bien l'ID de l'utilisateur !
+                  _serviceCard(context, Icons.group_add_rounded, "Créer Tontine", gold, CreateTontineScreen(userId: widget.userData['id'])),
+                  
                   _serviceCard(context, Icons.handshake_rounded, "Prêt Islamique", const Color(0xFF4A90E2), const LoanScreen()), 
-                  _serviceCard(context, Icons.volunteer_activism_rounded, "Social", const Color(0xFFE24A8D), const SocialScreen()), 
+                  _serviceCard(context, Icons.group_add_rounded, "Créer Tontine", gold, CreateTontineScreen(userId: widget.userData['id'])),
                   _serviceCard(context, Icons.trending_up_rounded, "Investissement", const Color(0xFF34C759), null), 
                 ],
               ),
@@ -235,7 +233,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       child: Column(children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: const Color(0xFFF5F6F8), shape: BoxShape.circle),
+          decoration: const BoxDecoration(color: Color(0xFFF5F6F8), shape: BoxShape.circle),
           child: Icon(icon, color: Colors.black87, size: 26),
         ),
         const SizedBox(height: 10),
@@ -492,7 +490,7 @@ class _HistoryModalState extends State<_HistoryModal> {
                   if (_currentFilter == 'Entrées') {
                     txs = txs.where((t) => t['description'] == 'deposit' || t['description'] == 'transfer_in').toList();
                   } else if (_currentFilter == 'Sorties') {
-                    txs = txs.where((t) => t['description'] == 'transfer_out' || t['description'] == 'cotisation').toList();
+                    txs = txs.where((t) => t['description'] == 'withdrawal' || t['description'] == 'cotisation').toList();
                   }
 
                   if (txs.isEmpty) return Center(child: Text("Aucune transaction pour ce filtre.", style: TextStyle(color: Colors.grey.shade600)));
@@ -507,7 +505,7 @@ class _HistoryModalState extends State<_HistoryModal> {
                       String sign = "+";
                       IconData icon = Icons.payment;
 
-                      if (rawType == 'transfer_out') { title = "Retrait / Envoi"; amountColor = Colors.redAccent; sign = "-"; icon = Icons.arrow_upward_rounded; }
+                      if (rawType == 'withdrawal') { title = "Retrait / Envoi"; amountColor = Colors.redAccent; sign = "-"; icon = Icons.arrow_upward_rounded; }
                       else if (rawType == 'transfer_in') { title = "Argent reçu"; amountColor = Colors.green; sign = "+"; icon = Icons.arrow_downward_rounded; }
                       else if (rawType == 'deposit') { title = "Dépôt (Notch Pay)"; icon = Icons.account_balance_wallet; }
                       else if (rawType == 'cotisation') { title = "Cotisation Tontine"; amountColor = Colors.redAccent; sign = "-"; icon = Icons.pie_chart_rounded; }
@@ -517,7 +515,7 @@ class _HistoryModalState extends State<_HistoryModal> {
                         contentPadding: EdgeInsets.zero,
                         leading: Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: const Color(0xFFF5F6F8), borderRadius: BorderRadius.circular(12)),
+                          decoration: const BoxDecoration(color: Color(0xFFF5F6F8), shape: BoxShape.circle),
                           child: Icon(icon, color: Colors.black87),
                         ),
                         title: Text(title, style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 15)),
@@ -527,7 +525,7 @@ class _HistoryModalState extends State<_HistoryModal> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text("$sign ${txs[i]['amount']} F", style: TextStyle(color: amountColor, fontWeight: FontWeight.bold, fontSize: 16)),
-                            const Text("Succès", style: TextStyle(color: Colors.green, fontSize: 11)), // Statut simulé
+                            const Text("Succès", style: TextStyle(color: Colors.green, fontSize: 11)), // Statut
                           ],
                         ),
                       );
