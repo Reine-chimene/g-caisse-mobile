@@ -69,13 +69,13 @@ class ApiService {
   // TONTINES, MESSAGES & AUTRES
   // ==========================================
 
-  // ✅ MODIFIÉ : On passe l'ID de l'utilisateur pour ne récupérer que SES tontines
   static Future<List<dynamic>> getTontines(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  static Future<void> createTontine(String name, int adminId, String freq, double amount, double commission) async {
+  // ✅ MODIFIÉ : On renvoie les données pour pouvoir les utiliser dans l'appli
+  static Future<Map<String, dynamic>> createTontine(String name, int adminId, String freq, double amount, double commission) async {
     final res = await http.post(
       Uri.parse('$baseUrl/tontines'),
       headers: {"Content-Type": "application/json"},
@@ -87,7 +87,8 @@ class ApiService {
         "commission_rate": commission
       }),
     );
-    if (res.statusCode != 201) throw Exception("Erreur lors de la création");
+    if (res.statusCode == 201) return jsonDecode(res.body);
+    throw Exception("Erreur lors de la création");
   }
 
   static Future<List<dynamic>> getTontineMembers(int tontineId) async {
@@ -95,12 +96,12 @@ class ApiService {
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  // ✅ MODIFIÉ : Nouvelle route correcte pour quitter la tontine
+  // ✅ REMIS EN PLACE : La fonction pour quitter la tontine
   static Future<void> leaveTontine(int tontineId, int userId) async {
     final res = await http.delete(
       Uri.parse('$baseUrl/tontines/$tontineId/leave'),
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId}), // L'ID est passé dans le body
+      body: jsonEncode({"user_id": userId}), 
     );
     if (res.statusCode != 200) {
       throw Exception("Erreur lors de la sortie de la tontine");
@@ -141,7 +142,7 @@ class ApiService {
         'phone': phone,
         'amount': amount,
         'name': name ?? "Membre G-Caisse",
-        'email': email ?? "client@g-caisse.cm"
+        'email': email ?? "contact@g-caisse.cm"
       }),
     );
 

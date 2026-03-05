@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class CreateTontineScreen extends StatefulWidget {
-  const CreateTontineScreen({super.key});
+  final int userId; // 👈 1. LA SOLUTION EST ICI : La page sait maintenant QUI crée la tontine
+
+  const CreateTontineScreen({super.key, required this.userId}); 
 
   @override
   State<CreateTontineScreen> createState() => _CreateTontineScreenState();
@@ -11,7 +13,7 @@ class CreateTontineScreen extends StatefulWidget {
 class _CreateTontineScreenState extends State<CreateTontineScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _chiefController = TextEditingController(); // 👈 Nouveau champ pour le chef
+  final TextEditingController _chiefController = TextEditingController(); 
   final TextEditingController _amountController = TextEditingController();
   
   // Couleurs "Style Banque" (Mode Jour)
@@ -22,12 +24,11 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
 
   String _frequency = 'mensuel'; 
   bool _isLoading = false;
-  bool _acceptRules = false; // 👈 Nouvelle variable pour la case à cocher
+  bool _acceptRules = false; 
 
   void _submitTontine() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Double vérification de sécurité
     if (!_acceptRules) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('⚠️ Vous devez accepter les conditions.'), backgroundColor: Colors.orange),
@@ -38,15 +39,13 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Admin ID hardcodé à 1 pour la démo (le chef de la tontine)
-      int adminId = 1; 
       double amount = double.parse(_amountController.text);
       double commission = 2.0; 
 
-      // Appel API (Le nom du chef reste dans l'UI pour la démo, l'API utilise adminId)
+      // 👈 2. ET ICI : On envoie le vrai userId au serveur !
       await ApiService.createTontine(
         _nameController.text,
-        adminId,
+        widget.userId, // Le vrai ID de l'utilisateur connecté
         _frequency,
         amount,
         commission
@@ -60,7 +59,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context); // Retour à la liste
+        Navigator.pop(context, true); // On renvoie 'true' pour dire que c'est un succès
       }
 
     } catch (e) {
@@ -231,11 +230,10 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  // Le bouton est inactif (null) si la case n'est pas cochée ou si ça charge
                   onPressed: (_acceptRules && !_isLoading) ? _submitTontine : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
-                    disabledBackgroundColor: Colors.grey[300], // Couleur quand c'est grisé
+                    disabledBackgroundColor: Colors.grey[300], 
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),

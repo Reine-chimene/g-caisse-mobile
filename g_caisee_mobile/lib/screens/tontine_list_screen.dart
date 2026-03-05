@@ -74,7 +74,7 @@ class _TontineListScreenState extends State<TontineListScreen> {
         onPressed: () {
           Navigator.push(
             context, 
-            MaterialPageRoute(builder: (context) => const CreateTontineScreen()) 
+            MaterialPageRoute(builder: (context) => CreateTontineScreen(userId: widget.userId))
           ).then((_) => _fetchTontines()); // Rafraîchit au retour si on a créé une tontine
         },
         label: const Text("CRÉER UN GROUPE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
