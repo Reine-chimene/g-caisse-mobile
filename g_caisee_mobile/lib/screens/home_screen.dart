@@ -22,11 +22,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // ⚠️ SUPPRESSION DES CONST ICI CAR LES DONNÉES SONT DYNAMIQUES
     _pages = [
       HomeDashboard(userData: widget.userData),     
       TontineListScreen(userId: widget.userData['id']), 
-      const SavingScreen(), // Celui-ci peut rester const car il n'a pas de paramètres dynamiques     
+      const SavingScreen(),      
       ProfileScreen(userData: widget.userData), 
     ];
   }
@@ -90,6 +89,26 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } catch (e) { debugPrint(e.toString()); }
   }
 
+  // --- NOUVELLES FONCTIONS DEMANDÉES ---
+
+  void _openGoogleMaps() async {
+    // Lien vers une position (ex: Agence Yaoundé)
+    final Uri url = Uri.parse("https://www.google.com/maps/search/?api=1&query=Yaoundé+Cameroon");
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      debugPrint("Impossible d'ouvrir Maps");
+    }
+  }
+
+  void _openVoiceSupport() async {
+    // Ouvre WhatsApp pour envoyer un Voice ou un message au support
+    final Uri whatsappUrl = Uri.parse("https://wa.me/237600000000"); // REMPLACE PAR TON NUMÉRO
+    if (!await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication)) {
+      debugPrint("Impossible d'ouvrir WhatsApp");
+    }
+  }
+
+  // --- DIALOGUES EXISTANTS ---
+
   void _showDepositMethodSelector(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -108,8 +127,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildOperatorBtn("Orange", Colors.orange, () => _showOperatorDialog("Orange")),
-                _buildOperatorBtn("MTN MoMo", Colors.yellow.shade700, () => _showOperatorDialog("MTN")),
+                _buildOperatorBtn("Orange Money", Colors.orange),
+                _buildOperatorBtn("MTN MoMo", Colors.yellow.shade700),
               ],
             ),
           ],
@@ -118,122 +137,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _buildOperatorBtn(String name, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(Icons.phone_android, color: color, size: 30),
-          ),
-          const SizedBox(height: 8),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  void _showOperatorDialog(String op) {
-    Navigator.pop(context);
-    final TextEditingController amountController = TextEditingController();
-    final TextEditingController phoneController = TextEditingController(text: widget.userData['phone']);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Dépôt via $op"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Numéro de téléphone")),
-            TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Montant (FCFA)")),
-          ],
+  Widget _buildOperatorBtn(String name, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+          child: Icon(Icons.phone_android, color: color, size: 30),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(onPressed: () => _processPayment(phoneController.text, amountController.text), child: const Text("Valider")),
-        ],
-      ),
-    );
-  }
-
-  void _processPayment(String phone, String amountText) async {
-    final amount = double.tryParse(amountText);
-    if (amount == null || amount < 500) return;
-    Navigator.pop(context);
-    try {
-      final response = await ApiService.initiatePayment(phone, amount, name: widget.userData['fullname']);
-      if (response['success'] == true) {
-        final Uri url = Uri.parse(response['payment_url']);
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-        }
-      }
-    } catch (e) { debugPrint(e.toString()); }
-  }
-
-  void _showWithdrawDialog(BuildContext context) {
-    final TextEditingController amountController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Retrait d'argent"),
-        content: TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Montant (Min 500 FCFA)")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = double.tryParse(amountController.text) ?? 0;
-              if (amount >= 500) {
-                Navigator.pop(context);
-                try {
-                  await ApiService.transferMoney(widget.userData['id'], widget.userData['phone'], amount);
-                  _loadUserData();
-                } catch (e) { debugPrint(e.toString()); }
-              }
-            }, 
-            child: const Text("Retirer")
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showHistoryDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            const Padding(padding: EdgeInsets.all(20), child: Text("Historique", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            Expanded(
-              child: FutureBuilder<List<dynamic>>(
-                future: ApiService.getTransactions(widget.userData['id']),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final txs = snapshot.data!;
-                  return ListView.builder(
-                    controller: scrollController,
-                    itemCount: txs.length,
-                    itemBuilder: (context, i) => ListTile(
-                      title: Text("${txs[i]['description']}"),
-                      subtitle: Text("${txs[i]['created_at']}"),
-                      trailing: Text("${txs[i]['amount']} F", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+        const SizedBox(height: 8),
+        Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ],
     );
   }
 
@@ -243,10 +157,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("G-Caisse Invest"),
-        content: const Text("Le module d'investissement participatif est en cours de validation. Disponibilité : Q3 2026."),
+        content: const Text("Le module d'investissement participatif (Immobilier & Agriculture) est en cours de validation. Disponibilité : Q3 2026."),
         actions: [
-          // APRÈS (CORRIGÉ)
-TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", style: TextStyle(color: gold)))
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", style: TextStyle(color: gold)))
         ],
       ),
     );
@@ -276,19 +189,14 @@ TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", styl
                       Text("G-Caisse Premium", style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
                     ],
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: gold, width: 2),
-                    ),
-                    child: const CircleAvatar(backgroundImage: AssetImage('assets/logo.jpeg'), radius: 24, backgroundColor: Colors.white),
-                  ),
+                  const CircleAvatar(backgroundImage: AssetImage('assets/logo.jpeg'), radius: 24, backgroundColor: Colors.white),
                 ],
               ),
               const SizedBox(height: 30),
               _buildBalanceCard(),
               const SizedBox(height: 25),
 
+              // ACTIONS PRINCIPALES
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 decoration: BoxDecoration(
@@ -300,8 +208,8 @@ TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", styl
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _quickActionItem(Icons.download_rounded, "Dépôt", () => _showDepositMethodSelector(context)),
-                    _quickActionItem(Icons.upload_rounded, "Retrait", () => _showWithdrawDialog(context)),
-                    _quickActionItem(Icons.history_rounded, "Historique", () => _showHistoryDialog(context)),
+                    _quickActionItem(Icons.upload_rounded, "Retrait", () {}),
+                    _quickActionItem(Icons.history_rounded, "Historique", () {}),
                   ],
                 ),
               ),
@@ -318,9 +226,16 @@ TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", styl
                 mainAxisSpacing: 15,
                 crossAxisSpacing: 15,
                 children: [
+                  // 1. Tontine
                   _serviceCard(context, Icons.group_add_rounded, "Créer Tontine", gold, CreateTontineScreen(userId: widget.userData['id'])),
-                  _serviceCard(context, Icons.handshake_rounded, "Prêt Islamique", const Color(0xFF4A90E2), const LoanScreen()), 
-                  _serviceCard(context, Icons.explore_rounded, "Tontines Publiques", const Color(0xFFE67E22), TontineListScreen(userId: widget.userData['id'])),
+                  
+                  // 2. NOUVEAU : Google Maps
+                  _serviceCard(context, Icons.map_rounded, "Points Relais", Colors.redAccent, null, onCustomTap: _openGoogleMaps), 
+                  
+                  // 3. NOUVEAU : Voice/Support
+                  _serviceCard(context, Icons.record_voice_over_rounded, "Support Vocal", Colors.teal, null, onCustomTap: _openVoiceSupport),
+                  
+                  // 4. Investissement
                   _serviceCard(context, Icons.trending_up_rounded, "Investissement", const Color(0xFF34C759), null, isDemo: true), 
                 ],
               ),
@@ -391,10 +306,12 @@ TextButton(onPressed: () => Navigator.pop(context), child: Text("D'ACCORD", styl
     );
   }
 
-  Widget _serviceCard(BuildContext context, IconData icon, String label, Color color, Widget? page, {bool isDemo = false}) {
+  Widget _serviceCard(BuildContext context, IconData icon, String label, Color color, Widget? page, {bool isDemo = false, VoidCallback? onCustomTap}) {
     return GestureDetector(
       onTap: () { 
-        if (isDemo) {
+        if (onCustomTap != null) {
+          onCustomTap();
+        } else if (isDemo) {
           _showInvestmentInfo(context);
         } else if (page != null) {
           Navigator.push(context, MaterialPageRoute(builder: (c) => page)); 
