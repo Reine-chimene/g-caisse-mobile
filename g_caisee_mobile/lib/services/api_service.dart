@@ -4,6 +4,26 @@ import 'package:http/http.dart' as http;
 class ApiService {
   static const String baseUrl = 'https://g-caisse-api.onrender.com/api';
 
+  // ✅ AJOUT : Créer l'intention de paiement Stripe
+  static Future<String> createStripePaymentIntent(int userId, double amount) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/create-payment-intent'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "user_id": userId,
+        "amount": (amount * 100).toInt(), // Stripe travaille en centimes
+        "currency": "eur" // ou "usd" selon ton compte Stripe test
+      }),
+    );
+
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      return data['clientSecret']; // C'est ce code que le SDK Stripe utilisera
+    } else {
+      throw Exception("Erreur lors de la création du paiement par carte");
+    }
+  }
+
   static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
     final res = await http.post(
       Uri.parse('$baseUrl/login'),
@@ -74,7 +94,6 @@ class ApiService {
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  // ✅ MODIFIÉ : On renvoie les données pour pouvoir les utiliser dans l'appli
   static Future<Map<String, dynamic>> createTontine(String name, int adminId, String freq, double amount, double commission) async {
     final res = await http.post(
       Uri.parse('$baseUrl/tontines'),
@@ -96,7 +115,6 @@ class ApiService {
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  // ✅ REMIS EN PLACE : La fonction pour quitter la tontine
   static Future<void> leaveTontine(int tontineId, int userId) async {
     final res = await http.delete(
       Uri.parse('$baseUrl/tontines/$tontineId/leave'),
@@ -198,12 +216,10 @@ class ApiService {
     if (res.statusCode != 200) throw Exception("Erreur d'envoi WhatsApp");
   }
 
-  // Récupérer les objectifs d'épargne (ou solde global épargne)
   static Future<double> getSavingsBalance(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/savings'));
     if (res.statusCode == 200) {
       List data = jsonDecode(res.body);
-      // On fait la somme de tous les montants épargnés
       double total = 0;
       for (var goal in data) {
         total += double.tryParse(goal['current_amount'].toString()) ?? 0.0;
@@ -213,7 +229,6 @@ class ApiService {
     return 0.0;
   }
 
-  // Effectuer un dépôt sur l'épargne
   static Future<void> depositToSavings(int userId, double amount) async {
     final res = await http.post(
       Uri.parse('$baseUrl/deposit'),
@@ -223,12 +238,10 @@ class ApiService {
     if (res.statusCode != 200) throw Exception("Échec du dépôt d'épargne");
   }
 
-  // Récupérer l'historique spécifique à l'épargne
   static Future<List<dynamic>> getSavingsTransactions(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
     if (res.statusCode == 200) {
       List allTxs = jsonDecode(res.body);
-      // On ne garde que les transactions de type 'deposit' ou 'saving'
       return allTxs.where((tx) => tx['type'] == 'deposit' || tx['type'] == 'saving').toList();
     }
     return [];
