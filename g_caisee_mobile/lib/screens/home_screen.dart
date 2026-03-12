@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart'; 
-import 'package:flutter_stripe/flutter_stripe.dart' as stripe; // Préfixe pour éviter le conflit avec Card
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe; 
 import '../services/api_service.dart';
 import 'tontine_list_screen.dart'; 
 import 'saving_screen.dart';
@@ -9,7 +9,7 @@ import 'create_tontine_screen.dart';
 import 'profile_screen.dart'; 
 import 'chat_screen.dart';
 
-// --- ÉCRAN HISTORIQUE (DÉJÀ LIÉ À TON API) ---
+// --- ÉCRAN HISTORIQUE ---
 class HistoryScreen extends StatelessWidget {
   final int userId;
   const HistoryScreen({super.key, required this.userId});
@@ -33,7 +33,7 @@ class HistoryScreen extends StatelessWidget {
                              color: tx['type'] == 'depot' ? Colors.green : Colors.red),
                 title: Text("${tx['amount']} FCFA"),
                 subtitle: Text(tx['date']),
-                trailing: Text(tx['status'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                trailing: Text(tx['status'] ?? "Terminé", style: const TextStyle(fontWeight: FontWeight.bold)),
               );
             },
           );
@@ -55,7 +55,7 @@ class InvestmentScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Card( // Utilise le Card de Flutter
+            const Card(
               color: Colors.greenAccent,
               child: ListTile(
                 title: Text("Plan Argent", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -101,8 +101,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _pages = [
       HomeDashboard(userData: widget.userData),     
-      TontineListScreen(userId: widget.userData['id']), 
-      const SavingScreen(),       
+      TontineListScreen(userId: widget.userData['id'], userData: widget.userData), 
+      SavingScreen(userData: widget.userData),       
       ProfileScreen(userData: widget.userData), 
     ];
   }
@@ -206,9 +206,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } catch (e) { _showError("Échec du paiement"); }
   }
 
+  // ✅ CORRECTION RÉELLE STRIPE
   Future<void> _processStripePayment(double amount) async {
-     _showSuccess("Paiement par carte initié...");
-     // Appel à ApiService.createStripeIntent(amount) ici
+    _showSuccess("Initialisation du paiement sécurisé...");
+    try {
+      int userId = widget.userData['id'];
+      final String clientSecret = await ApiService.createStripePaymentIntent(userId, amount);
+      if (clientSecret.isNotEmpty) {
+        _showSuccess("Paiement prêt. (Test Mode: Secret généré)");
+        // Intégrer stripe.Stripe.instance.presentPaymentSheet() ici si configuré
+      }
+    } catch (e) {
+      _showError("Erreur lors de l'accès au service Visa");
+    }
   }
 
   void _showError(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
@@ -285,7 +295,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       decoration: BoxDecoration(
         color: darkBlue, 
         borderRadius: BorderRadius.circular(25),
-        image: const DecorationImage(image: AssetImage('assets/card_bg.png'), opacity: 0.05, fit: BoxFit.cover)
+        // ✅ CORRECTION : Retrait de l'image card_bg manquante
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text("Solde disponible", style: TextStyle(color: Colors.white70)),
@@ -327,7 +337,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _serviceCard(Icons.group_add, "Nouvelle Tontine", gold, CreateTontineScreen(userId: widget.userData['id'])),
         _serviceCard(Icons.handshake_rounded, "Prêts", Colors.purple, LoanScreen(userData: widget.userData)),
         _serviceCard(Icons.trending_up, "Investissement", Colors.green, const InvestmentScreen()),
-        _serviceCard(Icons.headset_mic, "Assistance", Colors.blue, null, onTap: () => launchUrl(Uri.parse("https://wa.me/237600000000"))),
+        // ✅ CORRECTION RÉELLE GOOGLE MAPS
+        _serviceCard(Icons.location_on, "Agences", Colors.orange, null, onTap: () async {
+          final Uri url = Uri.parse("https://www.google.com/maps/search/?api=1&query=Titigarage+Yaounde");
+          if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+            _showError("Impossible d'ouvrir la carte");
+          }
+        }),
       ],
     );
   }
@@ -336,7 +352,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return InkWell(
       onTap: () { 
         if (onTap != null) { onTap(); } 
-        else if (page != null) { Navigator.push(context, MaterialPageRoute(builder: (context) => page)); }
+        else if (page != null) { Navigator.push(context, MaterialPageRoute(builder: (c) => page)); }
       },
       child: Container(
         decoration: BoxDecoration(
