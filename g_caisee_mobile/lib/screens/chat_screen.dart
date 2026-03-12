@@ -5,7 +5,7 @@ import '../services/api_service.dart';
 class ChatScreen extends StatefulWidget {
   final int tontineId;
   final String tontineName;
-  final Map<String, dynamic> userData; // RÉEL : On récupère les vraies infos du membre
+  final Map<String, dynamic> userData; // RÉEL : Données reçues du membre connecté
 
   const ChatScreen({
     super.key, 
@@ -26,7 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<dynamic> messages = [];
   bool isLoading = true;
 
-  // Couleurs Premium
+  // Design System G-Caisse
   final Color gold = const Color(0xFFD4AF37);
   final Color cardGrey = const Color(0xFF1E1E1E);
   final Color bgBlack = const Color(0xFF0F0F0F);
@@ -35,7 +35,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _fetchMessages();
-    // RÉEL : Rafraîchissement automatique toutes les 3 secondes
+    // Rafraîchissement automatique réel
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) => _fetchMessages(isBackground: true));
   }
 
@@ -64,28 +64,26 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage() async {
     if (_msgController.text.trim().isEmpty) return;
 
-    final content = _msgController.text;
-    final int myId = widget.userData['id']; // RÉEL : Ton vrai ID
+    final String content = _msgController.text.trim();
+    final int myId = widget.userData['id']; // Utilise ton vrai ID stocké
 
     _msgController.clear(); 
 
     try {
       await ApiService.sendMessage(widget.tontineId, myId, content);
+      // On rafraîchit immédiatement après l'envoi
       _fetchMessages(isBackground: true); 
-      // Petit délai pour laisser le message apparaître avant de scroller
-      Timer(const Duration(milliseconds: 300), () => _scrollToBottom());
+      
+      // On descend la liste pour voir le nouveau message
+      Timer(const Duration(milliseconds: 300), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        }
+      });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi")));
-    }
-  }
-
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0.0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi du message")));
+      }
     }
   }
 
@@ -100,13 +98,10 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.tontineName, style: TextStyle(color: gold, fontSize: 16, fontWeight: FontWeight.bold)),
-            const Text("Groupe de Tontine", style: TextStyle(color: Colors.white60, fontSize: 11)),
+            const Text("Salon de discussion", style: TextStyle(color: Colors.white60, fontSize: 11)),
           ],
         ),
         iconTheme: IconThemeData(color: gold),
-        actions: [
-          IconButton(icon: Icon(Icons.info_outline, color: gold), onPressed: () {}),
-        ],
       ),
       body: Column(
         children: [
@@ -118,18 +113,18 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
-                        reverse: true, // Nouveaux messages en bas
-                        padding: const EdgeInsets.all(20),
+                        reverse: true, // Nouveaux messages en bas (standard chat)
+                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
                         itemCount: messages.length,
                         itemBuilder: (context, i) {
-                          var msg = messages[i];
-                          bool isMe = msg['user_id'] == widget.userData['id'];
+                          final msg = messages[i];
+                          final bool isMe = msg['user_id'] == widget.userData['id'];
                           return _buildMessageBubble(msg, isMe);
                         },
                       ),
           ),
 
-          // ZONE DE SAISIE PROFESSIONNELLE
+          // BARRE DE SAISIE
           _buildInputArea(),
         ],
       ),
@@ -141,9 +136,9 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.forum_outlined, size: 80, color: gold.withOpacity(0.1)),
+          Icon(Icons.chat_bubble_outline_rounded, size: 60, color: gold.withOpacity(0.1)),
           const SizedBox(height: 15),
-          const Text("Bienvenue dans le salon tontine", style: TextStyle(color: Colors.white38)),
+          const Text("Aucun message. Lancez la discussion !", style: TextStyle(color: Colors.white24)),
         ],
       ),
     );
@@ -151,10 +146,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputArea() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: cardGrey,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 10)],
       ),
       child: SafeArea(
         child: Row(
@@ -163,27 +158,28 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(25),
+                  border: Border.all(color: Colors.white10),
                 ),
                 child: TextField(
                   controller: _msgController,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
                   decoration: const InputDecoration(
-                    hintText: "Écrivez un message...",
+                    hintText: "Écrivez ici...",
                     hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
                     border: InputBorder.none,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             GestureDetector(
               onTap: _sendMessage,
               child: CircleAvatar(
                 backgroundColor: gold,
                 radius: 24,
-                child: const Icon(Icons.send_rounded, color: Colors.black),
+                child: const Icon(Icons.send_rounded, color: Colors.black, size: 22),
               ),
             )
           ],
@@ -200,13 +196,13 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           if (!isMe)
             Padding(
-              padding: const EdgeInsets.only(left: 10, bottom: 4),
+              padding: const EdgeInsets.only(left: 8, bottom: 4),
               child: Text(msg['fullname'] ?? "Membre", 
                   style: TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.bold)),
             ),
           Container(
             margin: const EdgeInsets.only(bottom: 12),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: isMe ? gold : const Color(0xFF2C2C2E),
@@ -218,10 +214,10 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             child: Text(
-              msg['content'],
+              msg['content'] ?? "",
               style: TextStyle(
                 color: isMe ? Colors.black : Colors.white, 
-                fontSize: 15,
+                fontSize: 14.5,
                 height: 1.3
               ),
             ),

@@ -5,7 +5,7 @@ import 'create_tontine_screen.dart';
 
 class TontineListScreen extends StatefulWidget {
   final int userId; 
-  final Map<String, dynamic>? userData; // Ajouté pour le Chat et les détails
+  final Map<String, dynamic>? userData; // Nécessaire pour transmettre au Chat
 
   const TontineListScreen({super.key, required this.userId, this.userData});
 
@@ -134,12 +134,13 @@ class _TontineListScreenState extends State<TontineListScreen> {
           ],
         ),
         onTap: () async {
+          // ✅ CORRECTION : Transmission de userData au détail
           final result = await Navigator.push(
             context, 
             MaterialPageRoute(builder: (c) => TontineDetailsScreen(
               tontine: t,
               userId: widget.userId,
-              userData: widget.userData ?? {}, // RÉEL : Nécessaire pour le chat
+              userData: widget.userData ?? {}, 
             ))
           );
           if (result == true) _fetchTontines();
