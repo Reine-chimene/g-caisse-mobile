@@ -52,7 +52,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               
               // TITRE
               Text(
-                "G-CAISSE",
+                "G-CAISE",
                 style: TextStyle(color: primaryColor, fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: 2),
               ),
               const SizedBox(height: 15),

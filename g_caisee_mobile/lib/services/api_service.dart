@@ -272,4 +272,20 @@ class ApiService {
     }
     return 0;
   }
+
+  // ✅ AJOUTS FINAUX POUR LE HOME_SCREEN
+  static Future<List<dynamic>> getUserTransactions(int userId) async {
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  static Future<Map<String, dynamic>> createStripeIntent(double amount) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/create-payment-intent'), // Utilise ta route backend Stripe
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"amount": (amount * 100).toInt()}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception("Erreur Stripe");
+  }
 }

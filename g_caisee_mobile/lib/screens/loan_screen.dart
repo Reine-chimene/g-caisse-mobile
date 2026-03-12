@@ -2,221 +2,172 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class LoanScreen extends StatefulWidget {
-  const LoanScreen({super.key});
+  final Map<String, dynamic>? userData; // On passe userData pour l'ID réel
+
+  const LoanScreen({super.key, this.userData});
 
   @override
   State<LoanScreen> createState() => _LoanScreenState();
 }
 
 class _LoanScreenState extends State<LoanScreen> {
-  // --- COULEURS COHÉRENTES AVEC LE RESTE DE L'APP ---
-  final Color primaryColor = const Color(0xFFD4AF37); // Doré G-Caisse
-  final Color backgroundColor = const Color(0xFFF8F9FA); // Fond très clair
-  final Color textColor = const Color(0xFF1A1A1A); // Texte sombre
-  final Color fieldColor = const Color(0xFFF5F6F8); // Champs gris clair
+  // --- DESIGN SYSTEM ---
+  final Color primaryColor = const Color(0xFFD4AF37); 
+  final Color backgroundColor = const Color(0xFFF8F9FA); 
+  final Color darkCard = const Color(0xFF1A1A2E);
 
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _purposeController = TextEditingController();
   
-  // Variables de simulation
+  // Paramètres réels
   double maxLoan = 500000; 
   double fees = 2500; 
   bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMaxLoan();
+  }
+
+  // RÉEL : On récupère la capacité d'emprunt réelle via le score de confiance
+  Future<void> _fetchMaxLoan() async {
+    try {
+      int userId = widget.userData?['id'] ?? 1;
+      int score = await ApiService.getTrustScore(userId);
+      setState(() {
+        // Logique métier : 5000 FCFA de prêt possible par point de confiance
+        maxLoan = score * 5000.0; 
+      });
+    } catch (e) {
+      debugPrint("Erreur score: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: Text("Financement Islamique", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-        backgroundColor: backgroundColor,
+        title: const Text("FINANCEMENT ÉTHIQUE", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        iconTheme: IconThemeData(color: textColor),
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. EN-TÊTE VISUEL & CARTE DE CAPACITÉ
-            _buildHeader(),
-            const SizedBox(height: 30),
-
-            Text("Simulateur de prêt", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 15),
-
-            // 2. FORMULAIRE PROPRE
-            _buildInputFields(),
-
-            const SizedBox(height: 25),
-
-            // 3. RÉSUMÉ DE LA SIMULATION (TICKET)
-            _buildSimulationResult(),
-
+            _buildCapacityCard(),
             const SizedBox(height: 35),
-
-            // 4. BOUTON D'ACTION
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
-                ),
-                onPressed: isLoading ? null : _submitLoanRequest,
-                child: isLoading 
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("SOUMETTRE LA DEMANDE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-            ),
-            
+            const Text("Détails de la demande", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-            const Center(
-              child: Text(
-                "Conforme aux principes de la finance islamique.\nSans intérêts (Riba). Gestion éthique.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.5),
-              ),
+            _buildCustomField(
+              label: "Montant souhaité",
+              controller: _amountController,
+              hint: "Ex: 100,000",
+              icon: Icons.account_balance_wallet_outlined,
+              isNumber: true,
             ),
+            const SizedBox(height: 20),
+            _buildCustomField(
+              label: "Motif ou Projet",
+              controller: _purposeController,
+              hint: "Expliquez l'usage des fonds...",
+              icon: Icons.edit_note_rounded,
+              maxLines: 3,
+            ),
+            const SizedBox(height: 30),
+            _buildSummaryTable(),
+            const SizedBox(height: 40),
+            _buildSubmitButton(),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  // --- WIDGET : EN-TÊTE & CARTE (Dégradé Premium) ---
-  Widget _buildHeader() {
+  Widget _buildCapacityCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(25),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)], // Dégradé très classe
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 15, offset: const Offset(0, 8))],
+        color: darkCard,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("CAPACITÉ D'EMPRUNT", style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.account_balance, color: Colors.white, size: 20),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text("${maxLoan.toStringAsFixed(0)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
+          const Text("ÉLIGIBILITÉ MAXIMUM", style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+          const SizedBox(height: 12),
+          Text("${maxLoan.toStringAsFixed(0)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: primaryColor.withValues(alpha: 0.15), 
-              borderRadius: BorderRadius.circular(20), 
-              border: Border.all(color: primaryColor.withValues(alpha: 0.3))
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.star, color: primaryColor, size: 14),
-                const SizedBox(width: 5),
-                Text("Éligible au prêt Qard Hasan", style: TextStyle(color: primaryColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                Icon(Icons.shield_moon_outlined, color: primaryColor, size: 18),
+                const SizedBox(width: 8),
+                const Text("Finance Islamique : 0% Riba", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
-          ),
+          )
         ],
       ),
     );
   }
 
-  // --- WIDGET : CHAMPS DE SAISIE (Style Banque) ---
-  Widget _buildInputFields() {
+  Widget _buildCustomField({required String label, required TextEditingController controller, required String hint, required IconData icon, bool isNumber = false, int maxLines = 1}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Montant souhaité", style: TextStyle(color: Color(0xFF1A1A1A), fontSize: 14, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: _amountController,
-          keyboardType: TextInputType.number,
-          style: TextStyle(color: textColor, fontSize: 16),
-          onChanged: (val) => setState(() {}), 
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.black87)),
+        const SizedBox(height: 10),
+        TextField(
+          controller: controller,
+          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+          maxLines: maxLines,
+          onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            hintText: "Ex: 150000",
-            hintStyle: TextStyle(color: Colors.grey.shade400),
-            prefixIcon: Icon(Icons.monetization_on_outlined, color: Colors.grey.shade500),
+            hintText: hint,
+            prefixIcon: Icon(icon, color: primaryColor),
             filled: true,
-            fillColor: fieldColor,
-            contentPadding: const EdgeInsets.symmetric(vertical: 18),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryColor, width: 1.5)),
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text("Motif du financement", style: TextStyle(color: Color(0xFF1A1A1A), fontSize: 14, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: _purposeController,
-          style: TextStyle(color: textColor, fontSize: 16),
-          maxLines: 2,
-          decoration: InputDecoration(
-            hintText: "Ex: Achat de matériel, Frais de santé...",
-            hintStyle: TextStyle(color: Colors.grey.shade400),
-            prefixIcon: Padding(
-              padding: const EdgeInsets.only(bottom: 25), // Remonte l'icône car maxLines: 2
-              child: Icon(Icons.description_outlined, color: Colors.grey.shade500),
-            ),
-            filled: true,
-            fillColor: fieldColor,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryColor, width: 1.5)),
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.all(18),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: Colors.grey.shade200)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: primaryColor, width: 2)),
           ),
         ),
       ],
     );
   }
 
-  // --- WIDGET : RÉSULTAT SIMULATION ---
-  Widget _buildSimulationResult() {
+  Widget _buildSummaryTable() {
     double amount = double.tryParse(_amountController.text) ?? 0;
-    
+    double total = amount > 0 ? amount + fees : 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, spreadRadius: 2)],
-        border: Border.all(color: Colors.grey.shade100),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade100)),
       child: Column(
         children: [
-          _rowDetail("Montant du prêt", "${amount.toStringAsFixed(0)} FCFA", isBold: true),
+          _summaryRow("Principal", "${amount.toStringAsFixed(0)} FCFA"),
           const SizedBox(height: 12),
-          _rowDetail("Taux d'intérêt (Riba)", "0 %", isHighlight: true),
+          _summaryRow("Frais de dossier", "${fees.toStringAsFixed(0)} FCFA"),
           const SizedBox(height: 12),
-          _rowDetail("Frais de dossier", "${fees.toStringAsFixed(0)} FCFA"),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 15),
-            child: Divider(color: Color(0xFFEEEEEE), thickness: 1),
-          ),
+          _summaryRow("Taux de profit", "0%", isGreen: true),
+          const Divider(height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("TOTAL À REMBOURSER", style: TextStyle(color: Color(0xFF1A1A1A), fontSize: 13, fontWeight: FontWeight.bold)),
-              Text(
-                "${(amount > 0 ? amount + fees : 0).toStringAsFixed(0)} FCFA", 
-                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 20)
-              ),
+              const Text("Total à rembourser", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              Text("${total.toStringAsFixed(0)} FCFA", style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900, fontSize: 20)),
             ],
           )
         ],
@@ -224,85 +175,90 @@ class _LoanScreenState extends State<LoanScreen> {
     );
   }
 
-  Widget _rowDetail(String label, String value, {bool isHighlight = false, bool isBold = false}) {
+  Widget _summaryRow(String title, String value, {bool isGreen = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-        Text(
-          value, 
-          style: TextStyle(
-            color: isHighlight ? Colors.green : textColor, 
-            fontWeight: (isHighlight || isBold) ? FontWeight.bold : FontWeight.w500,
-            fontSize: 14
-          )
-        ),
+        Text(title, style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w500)),
+        Text(value, style: TextStyle(color: isGreen ? Colors.green : Colors.black, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
-  // --- LOGIQUE : SOUMISSION ---
-  Future<void> _submitLoanRequest() async {
-    double amount = double.tryParse(_amountController.text) ?? 0;
-    
-    if (amount <= 0 || _purposeController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Veuillez remplir tous les champs."), backgroundColor: Colors.orange)
-      );
+  Widget _buildSubmitButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 0,
+        ),
+        onPressed: isLoading ? null : _submitRealRequest,
+        child: isLoading 
+          ? const CircularProgressIndicator(color: Colors.white) 
+          : const Text("SOUMETTRE LE DOSSIER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+      ),
+    );
+  }
+
+  // --- LOGIQUE RÉELLE (BACKEND) ---
+  Future<void> _submitRealRequest() async {
+    double amt = double.tryParse(_amountController.text) ?? 0;
+    if (amt < 5000 || _purposeController.text.length < 5) {
+      _showSnack("Veuillez remplir correctement les champs (min 5000 FCFA)", Colors.orange);
       return;
     }
 
-    if (amount > maxLoan) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ Le montant dépasse votre limite."), backgroundColor: Colors.red)
-      );
+    if (amt > maxLoan) {
+      _showSnack("Le montant dépasse votre limite autorisée", Colors.red);
       return;
     }
 
     setState(() => isLoading = true);
 
     try {
-      await ApiService.requestIslamicLoan(1, amount, _purposeController.text);
+      int userId = widget.userData?['id'] ?? 1;
+      await ApiService.requestIslamicLoan(userId, amt, _purposeController.text);
       
       if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (c) => AlertDialog(
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            icon: Icon(Icons.verified_user_rounded, color: primaryColor, size: 60),
-            title: Text("Demande Envoyée", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-            content: const Text(
-              "Votre dossier est maintenant entre les mains de notre comité d'éthique. Vous recevrez une réponse sous 24h.", 
-              textAlign: TextAlign.center, 
-              style: TextStyle(color: Colors.grey, height: 1.4)
-            ),
-            actions: [
-              Center(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor, 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                    minimumSize: const Size(double.infinity, 50)
-                  ),
-                  onPressed: () {
-                    Navigator.pop(c); 
-                    Navigator.pop(context); 
-                  }, 
-                  child: const Text("COMPRIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-              const SizedBox(height: 5),
-            ],
-          ),
-        );
+        _showSuccessDialog();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur de communication avec le serveur."), backgroundColor: Colors.red));
+      _showSnack("Serveur indisponible, réessayez plus tard", Colors.red);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
+            const SizedBox(height: 20),
+            const Text("Demande Enregistrée", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Text("Notre comité d'éthique analyse votre dossier. Réponse sous 24h.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
+            const SizedBox(height: 30),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              onPressed: () { Navigator.pop(c); Navigator.pop(context); },
+              child: const Text("RETOUR À L'ACCUEIL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            )
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -1,11 +1,18 @@
-import 'dart:async'; // Pour le rafraîchissement automatique
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final int tontineId;
   final String tontineName;
-  const ChatScreen({super.key, required this.tontineId, required this.tontineName});
+  final Map<String, dynamic> userData; // RÉEL : On récupère les vraies infos du membre
+
+  const ChatScreen({
+    super.key, 
+    required this.tontineId, 
+    required this.tontineName, 
+    required this.userData
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -18,24 +25,23 @@ class _ChatScreenState extends State<ChatScreen> {
   
   List<dynamic> messages = [];
   bool isLoading = true;
-  final int currentUserId = 1; // ID simulé de l'utilisateur connecté
 
-  // Couleurs
+  // Couleurs Premium
   final Color gold = const Color(0xFFD4AF37);
   final Color cardGrey = const Color(0xFF1E1E1E);
-  final Color bgBlack = const Color(0xFF121212);
+  final Color bgBlack = const Color(0xFF0F0F0F);
 
   @override
   void initState() {
     super.initState();
     _fetchMessages();
-    // Rafraîchir les messages toutes les 3 secondes
+    // RÉEL : Rafraîchissement automatique toutes les 3 secondes
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) => _fetchMessages(isBackground: true));
   }
 
   @override
   void dispose() {
-    _timer?.cancel(); // Arrêter le timer quand on quitte l'écran
+    _timer?.cancel(); 
     _msgController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -59,15 +65,27 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_msgController.text.trim().isEmpty) return;
 
     final content = _msgController.text;
-    _msgController.clear(); // Vider le champ tout de suite
+    final int myId = widget.userData['id']; // RÉEL : Ton vrai ID
+
+    _msgController.clear(); 
 
     try {
-      // Envoi optimiste : on pourrait l'ajouter localement tout de suite, 
-      // mais ici on attend le serveur pour être sûr.
-      await ApiService.sendMessage(widget.tontineId, currentUserId, content);
-      _fetchMessages(); // Recharger la liste
+      await ApiService.sendMessage(widget.tontineId, myId, content);
+      _fetchMessages(isBackground: true); 
+      // Petit délai pour laisser le message apparaître avant de scroller
+      Timer(const Duration(milliseconds: 300), () => _scrollToBottom());
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur d'envoi")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi")));
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -76,17 +94,18 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: bgBlack,
       appBar: AppBar(
+        backgroundColor: cardGrey,
+        elevation: 1,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.tontineName, style: TextStyle(color: gold, fontSize: 16, fontWeight: FontWeight.bold)),
-            const Text("En ligne", style: TextStyle(color: Colors.green, fontSize: 12)),
+            const Text("Groupe de Tontine", style: TextStyle(color: Colors.white60, fontSize: 11)),
           ],
         ),
-        backgroundColor: bgBlack,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: gold),
         actions: [
-          IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
+          IconButton(icon: Icon(Icons.info_outline, color: gold), onPressed: () {}),
         ],
       ),
       body: Column(
@@ -96,120 +115,118 @@ class _ChatScreenState extends State<ChatScreen> {
             child: isLoading
                 ? Center(child: CircularProgressIndicator(color: gold))
                 : messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey.shade800),
-                            const SizedBox(height: 10),
-                            const Text("Début de la discussion", style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      )
+                    ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
-                        reverse: true, // Le plus récent en bas (standard chat)
-                        padding: const EdgeInsets.all(15),
+                        reverse: true, // Nouveaux messages en bas
+                        padding: const EdgeInsets.all(20),
                         itemCount: messages.length,
                         itemBuilder: (context, i) {
-                          // Les messages arrivent souvent du plus récent au plus vieux via l'API, 
-                          // mais reverse: true inverse l'affichage.
-                          // Adapte selon le tri de ton API (ici on suppose que l'API renvoie du plus récent au plus vieux)
                           var msg = messages[i];
-                          bool isMe = msg['user_id'] == currentUserId;
-                          
+                          bool isMe = msg['user_id'] == widget.userData['id'];
                           return _buildMessageBubble(msg, isMe);
                         },
                       ),
           ),
 
-          // ZONE DE SAISIE
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            decoration: BoxDecoration(
-              color: cardGrey,
-              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
-            ),
-            child: Row(
-              children: [
-                IconButton(icon: const Icon(Icons.add, color: Colors.grey), onPressed: () {}),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    child: TextField(
-                      controller: _msgController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        hintText: "Message...",
-                        hintStyle: TextStyle(color: Colors.grey),
-                        border: InputBorder.none,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _sendMessage,
-                  child: CircleAvatar(
-                    backgroundColor: gold,
-                    child: const Icon(Icons.send, color: Colors.black, size: 20),
-                  ),
-                )
-              ],
-            ),
-          )
+          // ZONE DE SAISIE PROFESSIONNELLE
+          _buildInputArea(),
         ],
       ),
     );
   }
 
-  // --- WIDGET : BULLE DE MESSAGE ---
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.forum_outlined, size: 80, color: gold.withOpacity(0.1)),
+          const SizedBox(height: 15),
+          const Text("Bienvenue dans le salon tontine", style: TextStyle(color: Colors.white38)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cardGrey,
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: TextField(
+                  controller: _msgController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: "Écrivez un message...",
+                    hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sendMessage,
+              child: CircleAvatar(
+                backgroundColor: gold,
+                radius: 24,
+                child: const Icon(Icons.send_rounded, color: Colors.black),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMessageBubble(Map msg, bool isMe) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe ? gold : const Color(0xFF2C2C2E),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(15),
-            topRight: const Radius.circular(15),
-            bottomLeft: isMe ? const Radius.circular(15) : Radius.zero,
-            bottomRight: isMe ? Radius.zero : const Radius.circular(15),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isMe)
-              Text(msg['fullname'] ?? "Membre", style: TextStyle(color: gold, fontSize: 11, fontWeight: FontWeight.bold)),
-            
-            if (!isMe) const SizedBox(height: 3),
-            
-            Text(
-              msg['content'],
-              style: TextStyle(color: isMe ? Colors.black : Colors.white, fontSize: 15),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe)
+            Padding(
+              padding: const EdgeInsets.only(left: 10, bottom: 4),
+              child: Text(msg['fullname'] ?? "Membre", 
+                  style: TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.bold)),
             ),
-            
-            const SizedBox(height: 3),
-            
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Text(
-                // Si tu as une date, formate-la ici, sinon texte vide
-                "12:30", 
-                style: TextStyle(color: isMe ? Colors.black54 : Colors.grey, fontSize: 10),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isMe ? gold : const Color(0xFF2C2C2E),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: isMe ? const Radius.circular(20) : Radius.zero,
+                bottomRight: isMe ? Radius.zero : const Radius.circular(20),
               ),
             ),
-          ],
-        ),
+            child: Text(
+              msg['content'],
+              style: TextStyle(
+                color: isMe ? Colors.black : Colors.white, 
+                fontSize: 15,
+                height: 1.3
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
