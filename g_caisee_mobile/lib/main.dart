@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:g_caisee_mobile/screens/splash_screen.dart'; // ✅ Import du Splash
-import 'package:g_caisee_mobile/screens/welcome_screen.dart';
+import 'package:g_caisee_mobile/screens/splash_screen.dart';
 import 'package:g_caisee_mobile/screens/home_screen.dart'; 
 import 'package:g_caisee_mobile/screens/tontine_list_screen.dart';
 import 'package:g_caisee_mobile/screens/saving_screen.dart';
@@ -23,24 +22,32 @@ class MyApp extends StatelessWidget {
       builder: (_, ThemeMode currentMode, __) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'G-CAISE', // ✅ Nom corrigé
+          title: 'G-CAISE',
           
           theme: ThemeData(
             brightness: Brightness.light, 
             primaryColor: const Color(0xFFD4AF37),
             scaffoldBackgroundColor: const Color(0xFFF5F6F8),
-            appBarTheme: const AppBarTheme(backgroundColor: Colors.white, foregroundColor: Colors.black),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Colors.white, 
+              foregroundColor: Colors.black,
+              elevation: 0,
+            ),
           ),
           
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: const Color(0xFFD4AF37),
             scaffoldBackgroundColor: const Color(0xFF121212),
-            appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E1E), foregroundColor: Colors.white),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF1E1E1E), 
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
           ),
           
           themeMode: currentMode,
-          home: const SplashScreen(), // ✅ Démarre sur le Splash Screen
+          home: const SplashScreen(), 
         );
       }
     );
@@ -72,9 +79,10 @@ class _MainWrapperState extends State<MainWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _pages = [
+    // Liste des pages synchronisée avec les classes corrigées
+    final List<Widget> pages = [
       HomeScreen(userData: currentUser), 
-      TontineListScreen(userId: currentUser['id'], userData: currentUser), // ✅ Ajout userData
+      TontineListScreen(userId: currentUser['id'], userData: currentUser),
       SavingScreen(userData: currentUser),
       ProfileScreen(userData: currentUser),
     ];
@@ -84,14 +92,14 @@ class _MainWrapperState extends State<MainWrapper> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages,
+        children: pages,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05), 
-              blurRadius: 10
+              color: Colors.black.withValues(alpha: 0.05), 
+              blurRadius: 10,
             )
           ],
         ),

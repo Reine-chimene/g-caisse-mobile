@@ -7,6 +7,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
 # followed by an optional build number separated by a +.
+
 # Both the version and the builder number may be overridden in flutter
 # build by specifying --build-name and --build-number, respectively.
 # In Android, build-name is used as versionName while build-number used as versionCode.
@@ -63,7 +64,7 @@ flutter:
     - assets/logo.jpeg
     - assets/logo_mtn.jpg
     - assets/logo_orange.jpg
-    - assets/logo_visa.PNG
+    - assets/logo_visa.png
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

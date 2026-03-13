@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'welcome_screen.dart'; // Ou ton écran de login
+import 'welcome_screen.dart'; 
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -23,10 +23,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     // Redirection automatique après 3 secondes
     Timer(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+        );
+      }
     });
   }
 
@@ -39,36 +41,63 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F), // Noir luxe
+      backgroundColor: Colors.white, // ✅ Fond blanc épuré
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Ton Logo
+              // Ton Logo avec une légère ombre pour le faire ressortir sur le blanc
               Container(
-                width: 150,
-                height: 150,
-                decoration: const BoxDecoration(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  image: DecorationImage(image: AssetImage('assets/logo.jpeg'), fit: BoxFit.cover),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    )
+                  ],
+                  image: const DecorationImage(
+                    image: AssetImage('assets/logo.jpeg'), 
+                    fit: BoxFit.cover
+                  ),
                 ),
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 30),
+              
+              // Nom de l'application
               const Text(
                 "G-CAISE",
                 style: TextStyle(
-                  color: Color(0xFFD4AF37),
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 4,
+                  color: Color(0xFFD4AF37), // Doré G-CAISE
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 6,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text("La Tontine Digitale Éthique", style: TextStyle(color: Colors.white54, fontSize: 12)),
-              const SizedBox(height: 50),
-              const CircularProgressIndicator(color: Color(0xFFD4AF37), strokeWidth: 2),
+              
+              // Slogan
+              Text(
+                "La Tontine Digitale Éthique", 
+                style: TextStyle(
+                  color: Colors.grey.shade600, // Gris foncé pour la lisibilité
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                )
+              ),
+              const SizedBox(height: 60),
+              
+              // Indicateur de chargement
+              const CircularProgressIndicator(
+                color: Color(0xFFD4AF37), 
+                strokeWidth: 3
+              ),
             ],
           ),
         ),
