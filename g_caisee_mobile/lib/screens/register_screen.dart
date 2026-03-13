@@ -17,27 +17,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  // Les mêmes couleurs "Style Banque" que l'écran de connexion
+  // Design G-CAISE
   final Color primaryColor = const Color(0xFFD4AF37);
   final Color backgroundColor = Colors.white;
   final Color textColor = const Color(0xFF1A1A1A);
   final Color fieldColor = const Color(0xFFF5F6F8); 
 
   void _register() async {
+    // Nettoyage des entrées
+    final String name = _nameController.text.trim();
+    final String phone = _phoneController.text.trim();
+    final String pin = _pinController.text.trim();
+
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
-        await ApiService.registerUser(_nameController.text, _phoneController.text, _pinController.text);
+        await ApiService.registerUser(name, phone, pin);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('✅ Compte créé avec succès ! Connectez-vous.'), backgroundColor: Colors.green)
+            const SnackBar(
+              content: Text('✅ Compte G-CAISE créé ! Connectez-vous.'), 
+              backgroundColor: Colors.green
+            )
           );
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+          Navigator.pushReplacement(
+            context, 
+            MaterialPageRoute(builder: (context) => const LoginScreen())
+          );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ Erreur: ${e.toString().replaceAll("Exception: ", "")}'), backgroundColor: Colors.red)
+            SnackBar(
+              content: Text('❌ Erreur: ${e.toString().replaceAll("Exception: ", "")}'), 
+              backgroundColor: Colors.red
+            )
           );
         }
       } finally {
@@ -54,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: textColor), 
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 20), 
           onPressed: () => Navigator.pop(context)
         ),
       ),
@@ -68,16 +82,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 Text(
                   "Créer un compte", 
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: textColor, letterSpacing: 0.5)
+                  style: TextStyle(
+                    fontSize: 32, 
+                    fontWeight: FontWeight.w800, 
+                    color: textColor, 
+                    letterSpacing: 0.5
+                  )
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  "Rejoignez la communauté G-Caisse en quelques secondes.", 
+                  "Rejoignez la communauté G-CAISE en quelques secondes.", 
                   style: TextStyle(fontSize: 15, color: Colors.grey[600])
                 ),
                 const SizedBox(height: 40),
 
-                // CHAMP NOM
                 _buildInputLabel("Nom complet"),
                 const SizedBox(height: 8),
                 _buildInputField(
@@ -89,24 +107,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // CHAMP TÉLÉPHONE
                 _buildInputLabel("Numéro de téléphone"),
                 const SizedBox(height: 8),
                 _buildInputField(
                   controller: _phoneController, 
-                  hint: "Ex: 690 00 00 00", 
+                  hint: "6xx xx xx xx", 
                   icon: Icons.phone_outlined, 
                   type: TextInputType.phone, 
                   isPassword: false
                 ),
                 const SizedBox(height: 20),
 
-                // CHAMP CODE PIN
                 _buildInputLabel("Créer un Code PIN secret"),
                 const SizedBox(height: 8),
                 _buildInputField(
                   controller: _pinController, 
-                  hint: "••••", 
+                  hint: "4 chiffres", 
                   icon: Icons.lock_outline, 
                   type: TextInputType.number, 
                   isPassword: true, 
@@ -114,7 +130,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 40),
 
-                // BOUTON D'INSCRIPTION
+                // BOUTON S'INSCRIRE
                 SizedBox(
                   height: 56,
                   child: ElevatedButton(
@@ -125,24 +141,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       elevation: 0,
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("S'INSCRIRE", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        ? const SizedBox(
+                            height: 24, 
+                            width: 24, 
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                          )
+                        : const Text(
+                            "S'INSCRIRE", 
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)
+                          ),
                   ),
                 ),
                 const SizedBox(height: 30),
 
-                // LIEN VERS CONNEXION
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text("Déjà un compte ? ", style: TextStyle(color: Colors.grey[600], fontSize: 15)),
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
-                      child: Text("Se connecter", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: Text(
+                        "Se connecter", 
+                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 15)
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
               ],
             ),
           ),
@@ -151,10 +176,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // --- WIDGETS PERSONNALISÉS ---
-
   Widget _buildInputLabel(String label) {
-    return Text(label, style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 14));
+    return Text(
+      label, 
+      style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 14)
+    );
   }
 
   Widget _buildInputField({
@@ -170,27 +196,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
       keyboardType: type,
       obscureText: isPassword ? _obscureText : false,
       maxLength: isPin ? 4 : null,
-      style: TextStyle(color: textColor, fontSize: 16, letterSpacing: isPassword ? 5 : 0),
+      style: TextStyle(
+        color: textColor, 
+        fontSize: 16, 
+        letterSpacing: isPassword ? 8 : 0
+      ),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: Colors.grey[400], letterSpacing: 0),
         counterText: "", 
         prefixIcon: Icon(icon, color: Colors.grey[500]),
-        contentPadding: const EdgeInsets.symmetric(vertical: 18),
         filled: true,
         fillColor: fieldColor,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryColor, width: 1.5)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16), 
+          borderSide: BorderSide.none
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16), 
+          borderSide: BorderSide(color: primaryColor, width: 1.5)
+        ),
         suffixIcon: isPassword
             ? IconButton(
-                icon: Icon(_obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: Colors.grey[500]),
+                icon: Icon(
+                  _obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined, 
+                  color: Colors.grey[500]
+                ),
                 onPressed: () => setState(() => _obscureText = !_obscureText),
               )
             : null,
       ),
       validator: (value) {
         if (value == null || value.trim().isEmpty) return "Ce champ est obligatoire";
-        if (isPin && value.length != 4) return "Le PIN doit contenir exactement 4 chiffres";
+        if (isPin && value.length != 4) return "Le PIN doit contenir 4 chiffres";
+        if (type == TextInputType.phone && value.length < 9) return "Numéro invalide";
         return null;
       },
     );

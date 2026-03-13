@@ -159,8 +159,8 @@ class ApiService {
       body: jsonEncode({
         'phone': phone,
         'amount': amount,
-        'name': name ?? "Membre G-Caisse",
-        'email': email ?? "contact@g-caisse.cm"
+        'name': name ?? "Membre G-CAISE",
+        'email': email ?? "contact@g-caise.cm"
       }),
     );
 
@@ -287,5 +287,12 @@ class ApiService {
     );
     if (res.statusCode == 200) return jsonDecode(res.body);
     throw Exception("Erreur Stripe");
+  }
+
+  // ✅ AJOUT POUR LE CLIENT (ADMIN) : Récupérer les commissions de 2%
+  static Future<Map<String, dynamic>> getAdminStats() async {
+    final res = await http.get(Uri.parse('$baseUrl/admin/stats'));
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"total_fees": 0, "total_volume": 0, "user_count": 0};
   }
 }

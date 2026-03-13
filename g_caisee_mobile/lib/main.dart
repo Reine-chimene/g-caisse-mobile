@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:g_caisee_mobile/screens/splash_screen.dart'; // ✅ Import du Splash
 import 'package:g_caisee_mobile/screens/welcome_screen.dart';
 import 'package:g_caisee_mobile/screens/home_screen.dart'; 
 import 'package:g_caisee_mobile/screens/tontine_list_screen.dart';
 import 'package:g_caisee_mobile/screens/saving_screen.dart';
 import 'package:g_caisee_mobile/screens/profile_screen.dart';
 
-// 💡 GLOBAL : On crée un contrôleur pour changer le thème n'importe où
+// 💡 GLOBAL : Contrôleur pour changer le thème
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() {
@@ -17,15 +18,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 💡 On utilise ValueListenableBuilder pour écouter le changement de thème
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (_, ThemeMode currentMode, __) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'G-Caisse',
+          title: 'G-CAISE', // ✅ Nom corrigé
           
-          // Thème Clair
           theme: ThemeData(
             brightness: Brightness.light, 
             primaryColor: const Color(0xFFD4AF37),
@@ -33,7 +32,6 @@ class MyApp extends StatelessWidget {
             appBarTheme: const AppBarTheme(backgroundColor: Colors.white, foregroundColor: Colors.black),
           ),
           
-          // Thème Sombre
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primaryColor: const Color(0xFFD4AF37),
@@ -41,16 +39,17 @@ class MyApp extends StatelessWidget {
             appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E1E), foregroundColor: Colors.white),
           ),
           
-          themeMode: currentMode, // Applique le mode actuel (light ou dark)
-          home: const WelcomeScreen(),
+          themeMode: currentMode,
+          home: const SplashScreen(), // ✅ Démarre sur le Splash Screen
         );
       }
     );
   }
 }
 
+// Le Wrapper qui gère la navigation par onglets après connexion
 class MainWrapper extends StatefulWidget {
-  final Map<String, dynamic>? userData; // On permet de recevoir les infos de connexion
+  final Map<String, dynamic>? userData; 
   const MainWrapper({super.key, this.userData});
 
   @override
@@ -59,28 +58,24 @@ class MainWrapper extends StatefulWidget {
 
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
-
-  // Données utilisateur centralisées
   late Map<String, dynamic> currentUser;
 
   @override
   void initState() {
     super.initState();
-    // On initialise avec les données reçues ou un dummy si vide
     currentUser = widget.userData ?? {
       "id": 1,
-      "fullname": "Client G-Caisse",
+      "fullname": "Client G-CAISE",
       "phone": "600000000",
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    // On définit les pages ici pour qu'elles se mettent à jour si currentUser change
     final List<Widget> _pages = [
       HomeScreen(userData: currentUser), 
-      TontineListScreen(userId: currentUser['id']),
-      const SavingScreen(),
+      TontineListScreen(userId: currentUser['id'], userData: currentUser), // ✅ Ajout userData
+      SavingScreen(userData: currentUser),
       ProfileScreen(userData: currentUser),
     ];
 
@@ -95,7 +90,7 @@ class _MainWrapperState extends State<MainWrapper> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05), 
+              color: Colors.black.withOpacity(0.05), 
               blurRadius: 10
             )
           ],

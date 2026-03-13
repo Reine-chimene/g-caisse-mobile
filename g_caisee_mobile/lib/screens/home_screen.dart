@@ -241,7 +241,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
               children: [
                 _buildLogoBtn("Orange", 'assets/logo_orange.jpg', () => _openPaymentInput("Orange")),
                 _buildLogoBtn("MTN", 'assets/logo_mtn.jpg', () => _openPaymentInput("MTN")),
-                _buildLogoBtn("Visa", 'assets/logo_visa.jpg', () => _openPaymentInput("Visa", isStripe: true)),
+                _buildLogoBtn("Visa", 'assets/logo_visa.PNG', () => _openPaymentInput("Visa", isStripe: true)),
               ],
             ),
           ],
