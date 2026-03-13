@@ -16,6 +16,7 @@ class TontineListScreen extends StatefulWidget {
 class _TontineListScreenState extends State<TontineListScreen> {
   List<dynamic> tontines = [];
   bool isLoading = true;
+  String? errorMessage; // Ajout pour afficher l'erreur à l'écran
   
   final Color primaryColor = const Color(0xFFFF7900); // Orange Orange
   final Color backgroundColor = Colors.white;
@@ -28,17 +29,35 @@ class _TontineListScreenState extends State<TontineListScreen> {
 
   Future<void> _fetchTontines() async {
     if (!mounted) return;
-    setState(() => isLoading = true); 
+    setState(() {
+      isLoading = true;
+      errorMessage = null; // On réinitialise l'erreur
+    }); 
     try {
+      debugPrint("--- DÉBUT FETCH TONTINES pour User ID: ${widget.userId} ---");
       final data = await ApiService.getTontines(widget.userId); 
+      debugPrint("--- DATA REÇUES: $data ---");
+
       if (mounted) {
         setState(() {
-          tontines = data;
+          // Sécurité : on s'assure que data est bien une liste avant de l'assigner
+          if (data is List) {
+             tontines = data;
+          } else {
+             debugPrint("Attention : data n'est pas une liste !");
+             tontines = []; // Fallback
+          }
           isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => isLoading = false);
+      debugPrint("--- ERREUR FETCH TONTINES: $e ---");
+      if (mounted) {
+        setState(() {
+           isLoading = false;
+           errorMessage = e.toString(); // On stocke l'erreur pour l'afficher
+        });
+      }
     }
   }
 
@@ -62,7 +81,9 @@ class _TontineListScreenState extends State<TontineListScreen> {
       ),
       body: isLoading 
         ? Center(child: CircularProgressIndicator(color: primaryColor))
-        : tontines.isEmpty ? _buildEmptyState() : _buildList(),
+        : errorMessage != null // S'il y a une erreur, on l'affiche
+            ? _buildErrorState()
+            : tontines.isEmpty ? _buildEmptyState() : _buildList(),
     );
   }
 
@@ -79,7 +100,7 @@ class _TontineListScreenState extends State<TontineListScreen> {
           child: ListTile(
             contentPadding: const EdgeInsets.all(15),
             leading: CircleAvatar(
-              backgroundColor: primaryColor.withOpacity(0.1),
+              backgroundColor: primaryColor.withValues(alpha: 0.1), // Correction warning
               child: Icon(Icons.group, color: primaryColor),
             ),
             title: Text(t['name'] ?? "Groupe", style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -87,7 +108,7 @@ class _TontineListScreenState extends State<TontineListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 5),
-                Text("${t['amount_to_pay']} FCFA • ${t['frequency']}"),
+                Text("${t['amount_to_pay'] ?? 0} FCFA • ${t['frequency'] ?? 'N/A'}"), // Sécurité sur les champs
                 const SizedBox(height: 5),
                 // ✅ SYSTEME DE TRAÇAGE (MAC) : Indicateur visuel
                 Row(
@@ -110,6 +131,40 @@ class _TontineListScreenState extends State<TontineListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(child: Text("Vous n'avez pas encore de groupe."));
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.groups, size: 60, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          const Text("Vous n'avez pas encore de groupe.", style: TextStyle(color: Colors.grey)),
+        ],
+      )
+    );
+  }
+
+  // NOUVEAU : Widget pour afficher l'erreur
+  Widget _buildErrorState() {
+     return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 50, color: Colors.red),
+            const SizedBox(height: 16),
+            const Text("Erreur de chargement", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 8),
+            Text(errorMessage ?? "Une erreur est survenue", textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _fetchTontines,
+              style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+              child: const Text("Réessayer", style: TextStyle(color: Colors.white)),
+            )
+          ],
+        ),
+      )
+    );
   }
 }

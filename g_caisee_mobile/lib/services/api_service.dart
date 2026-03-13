@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // Nécessaire pour debugPrint
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -89,9 +90,33 @@ class ApiService {
   // TONTINES, MESSAGES & AUTRES
   // ==========================================
 
+  // 🔍 MODIFICATION ICI POUR LE DÉBOGAGE
   static Future<List<dynamic>> getTontines(int userId) async {
-    final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
-    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+    try {
+      debugPrint("=== APPEL API : Récupération des tontines pour le User ID: $userId ===");
+      final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
+      
+      debugPrint("=== REPONSE API STATUT : ${res.statusCode} ===");
+      debugPrint("=== REPONSE API BODY : ${res.body} ===");
+
+      if (res.statusCode == 200) {
+         final decodedData = jsonDecode(res.body);
+         
+         // On s'assure qu'on renvoie bien une liste
+         if (decodedData is List) {
+             return decodedData;
+         } else if (decodedData is Map && decodedData.containsKey('data')) {
+             return decodedData['data']; // Au cas où l'API renvoie { "data": [...] }
+         } else {
+             debugPrint("=== ERREUR: Le format de réponse n'est pas une liste. ===");
+             return [];
+         }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("=== ERREUR API getTontines : $e ===");
+      return [];
+    }
   }
 
   static Future<Map<String, dynamic>> createTontine(String name, int adminId, String freq, double amount, double commission) async {
