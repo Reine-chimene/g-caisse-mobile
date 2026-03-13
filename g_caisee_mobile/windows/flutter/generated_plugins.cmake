@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  flutter_sound
   lengopay_flutter
   permission_handler_windows
   url_launcher_windows

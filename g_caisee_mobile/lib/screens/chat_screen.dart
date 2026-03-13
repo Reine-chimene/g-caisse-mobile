@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/api_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final int tontineId;
   final String tontineName;
-  final Map<String, dynamic> userData; // RÉEL : Données reçues du membre connecté
+  final Map<String, dynamic> userData;
 
   const ChatScreen({
     super.key, 
@@ -26,6 +28,10 @@ class _ChatScreenState extends State<ChatScreen> {
   List<dynamic> messages = [];
   bool isLoading = true;
 
+  // --- AUDIO VARIABLES ---
+  FlutterSoundRecorder? _recorder;
+  bool _isRecording = false;
+
   // Design System G-Caisse
   final Color gold = const Color(0xFFD4AF37);
   final Color cardGrey = const Color(0xFF1E1E1E);
@@ -35,8 +41,19 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _fetchMessages();
-    // Rafraîchissement automatique réel
+    _initRecorder(); // Initialise le micro
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) => _fetchMessages(isBackground: true));
+  }
+
+  // Demande la permission et prépare le micro
+  Future<void> _initRecorder() async {
+    _recorder = FlutterSoundRecorder();
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      debugPrint("Permission micro refusée");
+      return;
+    }
+    await _recorder!.openRecorder();
   }
 
   @override
@@ -44,6 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _timer?.cancel(); 
     _msgController.dispose();
     _scrollController.dispose();
+    _recorder?.closeRecorder(); // Ferme proprement le micro
     super.dispose();
   }
 
@@ -61,20 +79,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _sendMessage() async {
-    if (_msgController.text.trim().isEmpty) return;
+  Future<void> _sendMessage({String? customContent}) async {
+    final String content = customContent ?? _msgController.text.trim();
+    if (content.isEmpty) return;
 
-    final String content = _msgController.text.trim();
-    final int myId = widget.userData['id']; // Utilise ton vrai ID stocké
+    final int myId = widget.userData['id'];
 
-    _msgController.clear(); 
+    if (customContent == null) _msgController.clear(); 
 
     try {
       await ApiService.sendMessage(widget.tontineId, myId, content);
-      // On rafraîchit immédiatement après l'envoi
       _fetchMessages(isBackground: true); 
       
-      // On descend la liste pour voir le nouveau message
       Timer(const Duration(milliseconds: 300), () {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -84,6 +100,29 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi du message")));
       }
+    }
+  }
+
+  // --- LOGIQUE D'ENREGISTREMENT VOCAL ---
+  Future<void> _startRecording() async {
+    try {
+      await _recorder!.startRecorder(toFile: 'temp_audio.aac');
+      setState(() => _isRecording = true);
+    } catch (e) {
+      debugPrint("Erreur d'enregistrement : $e");
+    }
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    try {
+      await _recorder!.stopRecorder();
+      setState(() => _isRecording = false);
+      
+      // On envoie un marqueur spécial pour le backend
+      // Le client verra l'UI d'un message vocal
+      _sendMessage(customContent: "[VOICE] Message vocal");
+    } catch (e) {
+      debugPrint("Erreur arrêt enregistrement : $e");
     }
   }
 
@@ -113,12 +152,18 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
-                        reverse: true, // Nouveaux messages en bas (standard chat)
+                        reverse: true,
                         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
                         itemCount: messages.length,
                         itemBuilder: (context, i) {
                           final msg = messages[i];
                           final bool isMe = msg['user_id'] == widget.userData['id'];
+                          
+                          // Détection du mode vocal
+                          if (msg['content'] != null && msg['content'].toString().startsWith("[VOICE]")) {
+                            return _buildVoiceBubble(msg, isMe);
+                          }
+                          
                           return _buildMessageBubble(msg, isMe);
                         },
                       ),
@@ -149,25 +194,46 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: cardGrey,
-        boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 10)],
+        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10)],
       ),
       child: SafeArea(
         child: Row(
           children: [
+            // BOUTON MICROPHONE (Mode Voice)
+            GestureDetector(
+              onLongPress: _startRecording,
+              onLongPressEnd: (details) => _stopRecordingAndSend(),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: EdgeInsets.all(_isRecording ? 12 : 8),
+                decoration: BoxDecoration(
+                  color: _isRecording ? Colors.red : Colors.transparent,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isRecording ? Icons.mic : Icons.mic_none, 
+                  color: _isRecording ? Colors.white : gold, 
+                  size: _isRecording ? 28 : 24
+                ),
+              ),
+            ),
+            const SizedBox(width: 5),
+
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(25),
-                  border: Border.all(color: Colors.white10),
+                  border: Border.all(color: _isRecording ? Colors.red.withOpacity(0.5) : Colors.white10),
                 ),
                 child: TextField(
                   controller: _msgController,
+                  enabled: !_isRecording, // Désactive l'écriture pendant l'enregistrement vocal
                   style: const TextStyle(color: Colors.white, fontSize: 15),
-                  decoration: const InputDecoration(
-                    hintText: "Écrivez ici...",
-                    hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: _isRecording ? "Enregistrement en cours..." : "Écrivez ici...",
+                    hintStyle: TextStyle(color: _isRecording ? Colors.red : Colors.white24, fontSize: 14),
                     border: InputBorder.none,
                   ),
                 ),
@@ -175,7 +241,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 10),
             GestureDetector(
-              onTap: _sendMessage,
+              onTap: () => _sendMessage(),
               child: CircleAvatar(
                 backgroundColor: gold,
                 radius: 24,
@@ -188,6 +254,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // BULLE TEXTE CLASSIQUE
   Widget _buildMessageBubble(Map msg, bool isMe) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -220,6 +287,56 @@ class _ChatScreenState extends State<ChatScreen> {
                 fontSize: 14.5,
                 height: 1.3
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // NOUVELLE BULLE : MODE VOICE
+  Widget _buildVoiceBubble(Map msg, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe)
+            Padding(
+              padding: const EdgeInsets.only(left: 8, bottom: 4),
+              child: Text(msg['fullname'] ?? "Membre", 
+                  style: TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isMe ? gold : const Color(0xFF2C2C2E),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: isMe ? const Radius.circular(20) : Radius.zero,
+                bottomRight: isMe ? Radius.zero : const Radius.circular(20),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.play_circle_fill, color: isMe ? Colors.black87 : Colors.white, size: 35),
+                const SizedBox(width: 10),
+                // Ligne de progression (UI)
+                Container(
+                  width: 100, height: 3,
+                  decoration: BoxDecoration(color: isMe ? Colors.black26 : Colors.white24, borderRadius: BorderRadius.circular(5)),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 0.3, // Fausse progression
+                    child: Container(color: isMe ? Colors.black : gold),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Icon(Icons.mic, color: isMe ? Colors.black54 : Colors.white54, size: 16),
+              ],
             ),
           ),
         ],
