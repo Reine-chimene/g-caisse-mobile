@@ -26,7 +26,7 @@ class MyApp extends StatelessWidget {
           
           theme: ThemeData(
             brightness: Brightness.light, 
-            primaryColor: const Color(0xFFD4AF37),
+            primaryColor: const Color(0xFFFF7900), // ✅ Orange Max It
             scaffoldBackgroundColor: const Color(0xFFF5F6F8),
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white, 
@@ -37,7 +37,7 @@ class MyApp extends StatelessWidget {
           
           darkTheme: ThemeData(
             brightness: Brightness.dark,
-            primaryColor: const Color(0xFFD4AF37),
+            primaryColor: const Color(0xFFFF7900), // ✅ Orange Max It
             scaffoldBackgroundColor: const Color(0xFF121212),
             appBarTheme: const AppBarTheme(
               backgroundColor: Color(0xFF1E1E1E), 
@@ -108,7 +108,7 @@ class _MainWrapperState extends State<MainWrapper> {
           onTap: (index) => setState(() => _currentIndex = index),
           type: BottomNavigationBarType.fixed,
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          selectedItemColor: const Color(0xFFD4AF37),
+          selectedItemColor: const Color(0xFFFF7900), // ✅ Orange Max It activé
           unselectedItemColor: Colors.grey.shade400,
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Accueil'),

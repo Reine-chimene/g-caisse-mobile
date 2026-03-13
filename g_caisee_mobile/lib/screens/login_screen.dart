@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'home_screen.dart'; 
+import '../main.dart'; // ✅ IMPORT TRÈS IMPORTANT : Pour accéder au MainWrapper
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,8 +16,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  // Design G-CAISE
-  final Color primaryColor = const Color(0xFFD4AF37); 
+  // ✅ NOUVEAU DESIGN G-CAISE (Style Max It)
+  final Color primaryColor = const Color(0xFFFF7900); // Orange Max It
   final Color backgroundColor = Colors.white; 
   final Color textColor = const Color(0xFF1A1A1A); 
   final Color fieldColor = const Color(0xFFF5F6F8); 
@@ -40,9 +40,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final userData = await ApiService.loginUser(phone, pin);
 
       if (mounted) {
+        // ✅ CORRECTION MAJEURE : On redirige vers MainWrapper pour avoir la NavBar !
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomeScreen(userData: userData)),
+          MaterialPageRoute(builder: (context) => MainWrapper(userData: userData)),
         );
       }
     } catch (e) {
@@ -81,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         )
