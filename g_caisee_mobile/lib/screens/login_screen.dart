@@ -48,10 +48,26 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // ✅ GESTION DES ERREURS POUR LE CLIENT
+        String rawError = e.toString();
+        String errorMessage = "Une erreur est survenue.";
+
+        // Traduction des erreurs techniques en langage clair
+        if (rawError.contains("SocketException") || 
+            rawError.contains("Network is unreachable") || 
+            rawError.contains("Failed host lookup")) {
+          errorMessage = "Problème de connexion Internet. Veuillez vérifier votre réseau.";
+        } else if (rawError.contains("Identifiants incorrects")) {
+          errorMessage = "Numéro de téléphone ou code PIN incorrect.";
+        } else {
+          errorMessage = rawError.replaceAll("Exception: ", "");
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Numéro ou code PIN incorrect'),
+          SnackBar(
+            content: Text('❌ $errorMessage'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4), // Laisse le temps au client de lire
           ),
         );
       }

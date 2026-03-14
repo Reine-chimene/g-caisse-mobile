@@ -90,7 +90,6 @@ class ApiService {
   // TONTINES, MESSAGES & AUTRES
   // ==========================================
 
-  // 🔍 MODIFICATION ICI POUR LE DÉBOGAGE
   static Future<List<dynamic>> getTontines(int userId) async {
     try {
       debugPrint("=== APPEL API : Récupération des tontines pour le User ID: $userId ===");
@@ -101,12 +100,10 @@ class ApiService {
 
       if (res.statusCode == 200) {
          final decodedData = jsonDecode(res.body);
-         
-         // On s'assure qu'on renvoie bien une liste
          if (decodedData is List) {
              return decodedData;
          } else if (decodedData is Map && decodedData.containsKey('data')) {
-             return decodedData['data']; // Au cas où l'API renvoie { "data": [...] }
+             return decodedData['data'];
          } else {
              debugPrint("=== ERREUR: Le format de réponse n'est pas une liste. ===");
              return [];
@@ -298,7 +295,6 @@ class ApiService {
     return 0;
   }
 
-  // ✅ AJOUTS FINAUX POUR LE HOME_SCREEN
   static Future<List<dynamic>> getUserTransactions(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
@@ -306,7 +302,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createStripeIntent(double amount) async {
     final res = await http.post(
-      Uri.parse('$baseUrl/create-payment-intent'), // Utilise ta route backend Stripe
+      Uri.parse('$baseUrl/create-payment-intent'),
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"amount": (amount * 100).toInt()}),
     );
@@ -314,10 +310,38 @@ class ApiService {
     throw Exception("Erreur Stripe");
   }
 
-  // ✅ AJOUT POUR LE CLIENT (ADMIN) : Récupérer les commissions de 2%
   static Future<Map<String, dynamic>> getAdminStats() async {
     final res = await http.get(Uri.parse('$baseUrl/admin/stats'));
     if (res.statusCode == 200) return jsonDecode(res.body);
     return {"total_fees": 0, "total_volume": 0, "user_count": 0};
+  }
+
+  // ==========================================
+  // ✅ AJOUTS POUR LE RADAR (GÉOLOCALISATION)
+  // ==========================================
+
+  static Future<void> updateUserLocation(int userId, double lat, double lng) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl/users/$userId/location'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"latitude": lat, "longitude": lng}),
+      );
+    } catch (e) {
+      debugPrint("Erreur mise à jour localisation: $e");
+    }
+  }
+
+  static Future<List<dynamic>> getTontineMembersLocations(int tontineId) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/locations'));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Erreur récupération positions membres: $e");
+      return [];
+    }
   }
 }

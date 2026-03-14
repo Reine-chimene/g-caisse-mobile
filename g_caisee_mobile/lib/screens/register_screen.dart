@@ -17,8 +17,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  // Design G-CAISE
-  final Color primaryColor = const Color(0xFFD4AF37);
+  // ✅ NOUVEAU DESIGN G-CAISE (Style Max It)
+  final Color primaryColor = const Color(0xFFFF7900); // Orange Max It
   final Color backgroundColor = Colors.white;
   final Color textColor = const Color(0xFF1A1A1A);
   final Color fieldColor = const Color(0xFFF5F6F8); 
@@ -50,7 +50,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('❌ Erreur: ${e.toString().replaceAll("Exception: ", "")}'), 
-              backgroundColor: Colors.red
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4), // Laisse le temps de lire
             )
           );
         }

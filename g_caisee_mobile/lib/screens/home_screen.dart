@@ -6,6 +6,7 @@ import 'saving_screen.dart';
 import 'loan_screen.dart';
 import 'create_tontine_screen.dart';
 import 'profile_screen.dart';
+import 'om_momo_screen.dart'; // ✅ AJOUT DE L'IMPORTATION ICI
 
 // --- ÉCRAN INVESTISSEMENT (De retour !) ---
 class InvestmentScreen extends StatelessWidget {
@@ -391,7 +392,9 @@ class _HomeDashboardState extends State<HomeScreen> {
             crossAxisSpacing: 15,
             childAspectRatio: 1.1, // Ajustement de la taille des tuiles
             children: [
-              // Tuiles colorées avec dégradés attrayants
+              // ✅ NOUVEAU : Le bouton OM <-> MoMo !
+              _coloredServiceItem(Icons.swap_horiz_rounded, "OM ↔ MoMo", [Colors.blueGrey.shade700, Colors.blueGrey.shade400], OmMomoScreen(userData: widget.userData)),
+              
               _coloredServiceItem(Icons.trending_up, "Investir", [Colors.blue.shade700, Colors.blue.shade400], const InvestmentScreen()),
               _coloredServiceItem(Icons.savings, "Épargne", [Colors.green.shade700, Colors.green.shade400], SavingScreen(userData: widget.userData)),
               _coloredServiceItem(Icons.handshake, "Prêts", [Colors.purple.shade700, Colors.purple.shade400], LoanScreen(userData: widget.userData)),
