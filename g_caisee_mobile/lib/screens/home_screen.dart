@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import 'tontine_list_screen.dart';
+import '../services/pdf_receipt_service.dart';
 import 'saving_screen.dart';
 import 'loan_screen.dart';
 import 'create_tontine_screen.dart';
 import 'profile_screen.dart';
-import 'om_momo_screen.dart'; // ✅ AJOUT DE L'IMPORTATION ICI
+import 'om_momo_screen.dart';
+import 'airtime_screen.dart';
+import 'bill_payment_screen.dart'; // ✅ Assure-toi que ce fichier existe !
 
-// --- ÉCRAN INVESTISSEMENT (De retour !) ---
+// --- ÉCRAN INVESTISSEMENT ---
 class InvestmentScreen extends StatelessWidget {
   const InvestmentScreen({super.key});
 
@@ -76,24 +78,28 @@ class HistoryScreen extends StatelessWidget {
             itemCount: snapshot.data!.length,
             itemBuilder: (context, index) {
               final tx = snapshot.data![index];
-              final isDepot = tx['type'] == 'depot';
+              final isDepot = tx['type'] == 'deposit';
               return Card(
                 elevation: 0,
                 color: Colors.grey.shade50,
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 child: ListTile(
+                  onTap: () async {
+                    try {
+                      final fullData = await ApiService.getTransactionReceipt(tx['id']);
+                      await PdfReceiptService.generateAndPrintReceipt(fullData);
+                    } catch (e) {
+                      debugPrint("Erreur reçu: $e");
+                    }
+                  },
                   leading: CircleAvatar(
                     backgroundColor: isDepot ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
                     child: Icon(isDepot ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded, color: isDepot ? Colors.green : Colors.red),
                   ),
                   title: Text("${tx['amount']} FCFA", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: Text(tx['created_at'] ?? "Récemment", style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10)),
-                    child: Text(tx['status'] ?? "Terminé", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  ),
+                  subtitle: Text(tx['description'] ?? "Transaction", style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  trailing: const Icon(Icons.picture_as_pdf, color: Colors.blue, size: 20),
                 ),
               );
             },
@@ -118,8 +124,6 @@ class _HomeDashboardState extends State<HomeScreen> {
   final Color blackColor = Colors.black;
   bool _isBalanceVisible = true;
   double totalBalance = 0.0;
-  
-  // Nouvelles variables pour les tontines récentes
   List<dynamic> mesTontines = [];
   bool isLoadingTontines = true;
 
@@ -133,7 +137,7 @@ class _HomeDashboardState extends State<HomeScreen> {
     try {
       int myId = widget.userData['id'];
       final balance = await ApiService.getUserBalance(myId);
-      final tontines = await ApiService.getTontines(myId); // Charge les tontines pour le carrousel
+      final tontines = await ApiService.getTontines(myId);
       if (mounted) {
         setState(() {
           totalBalance = balance;
@@ -146,76 +150,38 @@ class _HomeDashboardState extends State<HomeScreen> {
     }
   }
 
-  // --- LOGIQUE DES PAIEMENTS (Inchangée) ---
-  void _openPaymentInput(String operatorName, {bool isStripe = false}) {
-    Navigator.pop(context); 
-    final TextEditingController amountController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Dépôt via $operatorName", style: TextStyle(color: blackColor, fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: amountController,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: "Montant (FCFA)",
-            prefixIcon: Icon(Icons.payments_outlined, color: orangeColor),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: blackColor),
-            onPressed: () async {
-              double amt = double.tryParse(amountController.text) ?? 0;
-              if (amt < 500) return;
-              Navigator.pop(context);
-              if (isStripe) { _processStripePayment(amt); } else { _processMobilePayment(amt); }
-            }, 
-            child: const Text("Confirmer", style: TextStyle(color: Colors.white))
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _processMobilePayment(double amount) async {
-    try {
-      final response = await ApiService.initiatePayment(widget.userData['phone'], amount, name: widget.userData['fullname']);
-      if (response['success'] == true) await launchUrl(Uri.parse(response['payment_url']), mode: LaunchMode.externalApplication);
-    } catch (e) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec du paiement"))); }
-  }
-
-  Future<void> _processStripePayment(double amount) async {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Initialisation Visa...")));
-    try {
-      final res = await ApiService.createStripePaymentIntent(widget.userData['id'], amount);
-      if (res.isNotEmpty) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paiement prêt")));
-    } catch (e) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erreur service Visa"))); }
-  }
-
   void _showWithdrawDialog() {
     final TextEditingController ctrl = TextEditingController();
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Retrait de fonds"),
-        content: TextField(controller: ctrl, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: "Montant FCFA")),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: ctrl, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: "Montant FCFA")),
+            const SizedBox(height: 10),
+            const Text("NB: Frais de service de 2% inclus.", style: TextStyle(fontSize: 12, color: Colors.orange)),
+          ],
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: blackColor),
             onPressed: () async {
               if (ctrl.text.isNotEmpty) {
+                String amountStr = ctrl.text;
                 Navigator.pop(context);
                 try {
-                  await ApiService.transferMoney(widget.userData['id'], widget.userData['phone'], double.parse(ctrl.text));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Retrait initié !")));
+                  await ApiService.transferMoney(widget.userData['id'], widget.userData['phone'], double.parse(amountStr));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Retrait réussi !")));
                   _loadUserData();
-                } catch(e) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Solde insuffisant"), backgroundColor: Colors.red)); }
+                } catch(e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+                }
               }
             }, 
             child: const Text("Valider", style: TextStyle(color: Colors.white))
@@ -225,7 +191,6 @@ class _HomeDashboardState extends State<HomeScreen> {
     );
   }
 
-  // --- UI COMPONENTS ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -233,10 +198,11 @@ class _HomeDashboardState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Image.asset('assets/logo.jpeg', height: 40),
+        title: const Text("G-CAISE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none, color: Colors.black), onPressed: () {}),
-          const SizedBox(width: 10),
+          IconButton(icon: const Icon(Icons.person_outline, color: Colors.black), onPressed: () {
+             Navigator.push(context, MaterialPageRoute(builder: (c) => ProfileScreen(userData: widget.userData)));
+          }),
         ],
       ),
       body: RefreshIndicator(
@@ -250,13 +216,10 @@ class _HomeDashboardState extends State<HomeScreen> {
               _buildBalanceSection(),
               _buildQuickActions(),
               const SizedBox(height: 25),
-              
-              // NOUVEAU : Carrousel des tontines
               _buildRecentTontines(),
-              
               const SizedBox(height: 20),
               _buildServicesGrid(),
-              const SizedBox(height: 40), // Espace pour la bottom nav bar
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -274,7 +237,7 @@ class _HomeDashboardState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Solde G-CAISE", style: TextStyle(color: Colors.white70, fontSize: 14)),
+              const Text("Solde Principal", style: TextStyle(color: Colors.white70, fontSize: 14)),
               GestureDetector(
                 onTap: () => setState(() => _isBalanceVisible = !_isBalanceVisible),
                 child: Icon(_isBalanceVisible ? Icons.visibility_off : Icons.visibility, color: Colors.white, size: 20),
@@ -298,7 +261,7 @@ class _HomeDashboardState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Mieux espacé
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _actionIcon(Icons.add_to_photos, "Dépôt", () => _showDepositSelector()),
           _actionIcon(Icons.file_upload, "Retrait", () => _showWithdrawDialog()),
@@ -316,7 +279,7 @@ class _HomeDashboardState extends State<HomeScreen> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(14), // Un peu plus grand
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: orangeColor.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: Icon(icon, color: orangeColor, size: 28),
           ),
@@ -327,21 +290,20 @@ class _HomeDashboardState extends State<HomeScreen> {
     );
   }
 
-  // NOUVEAU : Aperçu des Tontines
   Widget _buildRecentTontines() {
     if (isLoadingTontines) return const Center(child: CircularProgressIndicator());
-    if (mesTontines.isEmpty) return const SizedBox(); // Cache la section si aucune tontine
+    if (mesTontines.isEmpty) return const SizedBox();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text("MES GROUPES DE TONTINE", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          child: Text("MES TONTINES", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
         ),
         const SizedBox(height: 15),
         SizedBox(
-          height: 130, // Hauteur du carrousel
+          height: 130,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -352,18 +314,14 @@ class _HomeDashboardState extends State<HomeScreen> {
                 width: 160,
                 margin: const EdgeInsets.only(right: 15),
                 padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E), // Gris très sombre, élégant
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.groups, color: orangeColor, size: 28),
                     const Spacer(),
-                    Text(t['name'] ?? 'Groupe', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
+                    Text(t['name'] ?? 'Groupe', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 1),
                     Text("${t['amount_to_pay']} FCFA", style: const TextStyle(color: Colors.white70, fontSize: 13)),
                   ],
                 ),
@@ -375,14 +333,13 @@ class _HomeDashboardState extends State<HomeScreen> {
     );
   }
 
-  // NOUVEAU DESIGN : De vrais boutons colorés
   Widget _buildServicesGrid() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("MES SERVICES", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          const Text("SERVICES G-CAISE (HUB)", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
           const SizedBox(height: 20),
           GridView.count(
             shrinkWrap: true,
@@ -390,15 +347,14 @@ class _HomeDashboardState extends State<HomeScreen> {
             crossAxisCount: 2,
             mainAxisSpacing: 15,
             crossAxisSpacing: 15,
-            childAspectRatio: 1.1, // Ajustement de la taille des tuiles
+            childAspectRatio: 1.1,
             children: [
-              // ✅ NOUVEAU : Le bouton OM <-> MoMo !
-              _coloredServiceItem(Icons.swap_horiz_rounded, "OM ↔ MoMo", [Colors.blueGrey.shade700, Colors.blueGrey.shade400], OmMomoScreen(userData: widget.userData)),
-              
-              _coloredServiceItem(Icons.trending_up, "Investir", [Colors.blue.shade700, Colors.blue.shade400], const InvestmentScreen()),
-              _coloredServiceItem(Icons.savings, "Épargne", [Colors.green.shade700, Colors.green.shade400], SavingScreen(userData: widget.userData)),
-              _coloredServiceItem(Icons.handshake, "Prêts", [Colors.purple.shade700, Colors.purple.shade400], LoanScreen(userData: widget.userData)),
-              _coloredServiceItem(Icons.add_business_rounded, "Créer Tontine", [Colors.orange.shade800, orangeColor], CreateTontineScreen(userId: widget.userData['id'])),
+              _coloredServiceItem(Icons.phone_android, "Recharge Crédit", [Colors.orange.shade800, Colors.orange.shade400], AirtimeScreen(userData: widget.userData)),
+              _coloredServiceItem(Icons.lightbulb, "Facture ENEO", [Colors.yellow.shade900, Colors.yellow.shade600], BillPaymentScreen(userData: widget.userData)),
+              _coloredServiceItem(Icons.swap_horiz, "OM ↔ MoMo", [Colors.blueGrey.shade700, Colors.blueGrey.shade400], OmMomoScreen(userData: widget.userData)),
+              _coloredServiceItem(Icons.savings, "Mon Épargne", [Colors.green.shade700, Colors.green.shade400], SavingScreen(userData: widget.userData)),
+              _coloredServiceItem(Icons.handshake, "Prêts Urgents", [Colors.purple.shade700, Colors.purple.shade400], LoanScreen(userData: widget.userData)),
+              _coloredServiceItem(Icons.add_business, "Nouvelle Tontine", [Colors.black, Colors.grey.shade800], CreateTontineScreen(userId: widget.userData['id'])),
             ],
           ),
         ],
@@ -412,30 +368,16 @@ class _HomeDashboardState extends State<HomeScreen> {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: LinearGradient(colors: gradientColors, begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: gradientColors[0].withValues(alpha: 0.3), 
-              blurRadius: 10, 
-              offset: const Offset(0, 5)
-            )
-          ],
+          boxShadow: [BoxShadow(color: gradientColors[0].withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 5))],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-              child: Icon(icon, color: Colors.white, size: 32),
-            ),
+            Icon(icon, color: Colors.white, size: 32),
             const SizedBox(height: 12),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15)),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14)),
           ],
         ),
       ),
@@ -456,9 +398,8 @@ class _HomeDashboardState extends State<HomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openPaymentInput("Orange")),
-                _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openPaymentInput("MTN")),
-                _logoBtn("Visa", 'assets/logo_visa.png', () => _openPaymentInput("Visa", isStripe: true)),
+                _logoBtn("Orange", 'assets/logo_orange.png', () => _openPaymentInput("Orange")),
+                _logoBtn("MTN", 'assets/logo_mtn.png', () => _openPaymentInput("MTN")),
               ],
             ),
           ],
@@ -467,19 +408,38 @@ class _HomeDashboardState extends State<HomeScreen> {
     );
   }
 
+  void _openPaymentInput(String op) {
+    Navigator.pop(context);
+    final TextEditingController ctrl = TextEditingController();
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: Text("Dépôt $op"),
+      content: TextField(controller: ctrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Montant FCFA")),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
+        ElevatedButton(onPressed: () async {
+          if (ctrl.text.isEmpty) return;
+          String amountStr = ctrl.text;
+          Navigator.pop(context);
+          try {
+            final res = await ApiService.initiatePayment(widget.userData['phone'], double.parse(amountStr));
+            if (res['success'] == true) await launchUrl(Uri.parse(res['payment_url']), mode: LaunchMode.externalApplication);
+          } catch(e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec du paiement")));
+          }
+        }, child: const Text("Confirmer"))
+      ],
+    ));
+  }
+
   Widget _logoBtn(String name, String path, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(path, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.payment, size: 40)),
-          ),
-          const SizedBox(height: 5),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
+      child: Column(children: [
+        Image.asset(path, width: 60, height: 60, errorBuilder: (c,e,s) => const Icon(Icons.payment, size: 60)),
+        const SizedBox(height: 5),
+        Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ]),
     );
   }
 }

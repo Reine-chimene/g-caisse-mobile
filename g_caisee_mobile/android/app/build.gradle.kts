@@ -42,11 +42,3 @@ android {
 flutter {
     source = "../.."
 }
-
-defaultConfig {
-        applicationId "com.example.g_caisee_mobile" // (Laisse ton ID tel quel)
-        minSdkVersion 21  // ✅ MODIFIE CETTE LIGNE (avant c'était flutter.minSdkVersion)
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-    }

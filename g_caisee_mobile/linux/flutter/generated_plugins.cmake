@@ -8,6 +8,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_sound
   flutter_volume_controller
   lengopay_flutter
+  printing
   url_launcher_linux
   zego_express_engine
 )

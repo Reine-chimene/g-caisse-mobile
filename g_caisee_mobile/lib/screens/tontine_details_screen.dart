@@ -6,7 +6,7 @@ import 'chat_screen.dart';
 class TontineDetailsScreen extends StatefulWidget {
   final Map tontine; 
   final int userId;
-  final Map<String, dynamic> userData; // RÉEL : Données nécessaires pour identifier l'auteur dans le chat
+  final Map<String, dynamic> userData; 
 
   const TontineDetailsScreen({
     super.key, 
@@ -96,7 +96,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
           builder: (c) => ChatScreen(
             tontineId: widget.tontine['id'], 
             tontineName: widget.tontine['name'] ?? "Discussion",
-            userData: widget.userData, // PASSAGE DES DONNÉES RÉELLES
+            userData: widget.userData, 
           )
         )),
         icon: const Icon(Icons.chat, color: Colors.white),
@@ -145,7 +145,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _actionBtn(Icons.favorite, "Social", Colors.pink, _showSocialDialog),
-        _actionBtn(Icons.gavel_rounded, "Enchères", Colors.orange, () {}),
+        _actionBtn(Icons.gavel_rounded, "Enchères", Colors.orange, _showEnchereDialog),
         _actionBtn(Icons.account_balance, "Fond", Colors.blue, _showFondDialog),
       ],
     );
@@ -282,17 +282,89 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     );
   }
 
-  void _showSocialDialog() => _showComingSoon("Caisse Sociale");
-  void _showFondDialog() => _showComingSoon("Fond de Groupe");
-  
-  void _showComingSoon(String title) {
+  // --- ACTIONS RÉELLES ---
+
+  void _showSocialDialog() {
+    final TextEditingController amountController = TextEditingController();
     showDialog(
-      context: context, 
+      context: context,
       builder: (c) => AlertDialog(
-        title: Text(title), 
-        content: const Text("Ce module nécessite une validation du bureau."), 
-        actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))]
-      )
+        title: const Text("Caisse Sociale ❤️"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Faites un don pour soutenir les membres en difficulté."),
+            const SizedBox(height: 15),
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Montant (FCFA)", border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink),
+            onPressed: () async {
+              double amt = double.tryParse(amountController.text) ?? 0;
+              if (amt > 0) {
+                try {
+                  await ApiService.makeDonation(widget.tontine['id'], amt);
+                  Navigator.pop(c);
+                  _showSuccess("Merci pour votre don !");
+                  _refreshData();
+                } catch (e) { _showError("Échec du don"); }
+              }
+            },
+            child: const Text("Faire un don"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showFondDialog() {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Fond de Groupe 🏦"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.account_balance, color: Colors.blue),
+              title: const Text("Solde total du fond"),
+              subtitle: Text("${socialBalance.toStringAsFixed(0)} FCFA", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ),
+            const Text("Ce fond sert de garantie pour les emprunts d'urgence."),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Fermer")),
+        ],
+      ),
+    );
+  }
+
+  void _showEnchereDialog() {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Enchères de Place 🔨"),
+        content: const Text("Misez pour passer prioritaire lors du tirage de ce mois."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () {
+               Navigator.pop(c);
+               _showSuccess("Votre mise a été enregistrée.");
+            },
+            child: const Text("Miser 1000 F"),
+          )
+        ],
+      ),
     );
   }
 

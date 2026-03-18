@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   geolocator_windows
   lengopay_flutter
   permission_handler_windows
+  printing
   screen_brightness_windows
   share_plus
   url_launcher_windows
