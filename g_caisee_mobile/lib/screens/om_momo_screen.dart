@@ -33,9 +33,9 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     });
   }
 
-  // ✅ APPEL RÉEL À NOTCH PAY VIA TON BACKEND
+  // ✅ APPEL RÉEL CORRIGÉ
   void _processDirectTransfer() async {
-    if (_amountController.text.isEmpty || _senderPhoneController.text.isEmpty || _receiverPhoneController.text.isEmpty) {
+    if (_amountController.text.isEmpty || _receiverPhoneController.text.isEmpty) {
       _showSnackBar("Veuillez remplir tous les champs", Colors.red);
       return;
     }
@@ -43,11 +43,14 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // On convertit le nom lisible en identifiant pour l'API (orange ou mtn)
+      String opForApi = _senderOperator.contains('Orange') ? 'orange' : 'mtn';
+
       final result = await ApiService.processDirectTransfer(
         senderId: widget.userData?['id'] ?? 0,
         receiverPhone: _receiverPhoneController.text,
         amount: double.parse(_amountController.text),
-        senderOperator: _senderOperator,
+        operator: opForApi, // ✅ Paramètre corrigé ici
       );
 
       if (mounted) {
@@ -73,7 +76,11 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
         content: Text(message, textAlign: TextAlign.center),
         actions: [
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size(double.infinity, 45)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor, 
+              minimumSize: const Size(double.infinity, 45),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () => Navigator.pop(context),
             child: const Text("OK", style: TextStyle(color: Colors.white)),
           )
@@ -86,7 +93,12 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Transfert OM ↔ MoMo"), backgroundColor: primaryColor, foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: const Text("Transfert OM ↔ MoMo"), 
+        backgroundColor: primaryColor, 
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -98,15 +110,17 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
             _buildOperatorCard("DEPUIS", _senderOperator, _senderPhoneController, (val) {
               setState(() {
                 _senderOperator = val!;
-                if (_senderOperator == _receiverOperator) _receiverOperator = (_senderOperator == 'Orange Money') ? 'MTN MoMo' : 'Orange Money';
+                if (_senderOperator == _receiverOperator) {
+                  _receiverOperator = (_senderOperator == 'Orange Money') ? 'MTN MoMo' : 'Orange Money';
+                }
               });
             }),
 
-            // ✅ LE BOUTON SWAP POUR CHANGER DE SENS
+            // ✅ LE BOUTON SWAP
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: IconButton(
-                icon: const Icon(Icons.swap_vert_circle, size: 50, color: Color(0xFFFF7900)),
+                icon: Icon(Icons.swap_vert_circle, size: 55, color: primaryColor),
                 onPressed: _switchOperators,
               ),
             ),
@@ -115,7 +129,9 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
             _buildOperatorCard("VERS", _receiverOperator, _receiverPhoneController, (val) {
               setState(() {
                 _receiverOperator = val!;
-                if (_receiverOperator == _senderOperator) _senderOperator = (_receiverOperator == 'Orange Money') ? 'MTN MoMo' : 'Orange Money';
+                if (_receiverOperator == _senderOperator) {
+                  _senderOperator = (_receiverOperator == 'Orange Money') ? 'MTN MoMo' : 'Orange Money';
+                }
               });
             }),
 
@@ -125,9 +141,16 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor, 
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 2,
+                ),
                 onPressed: _isLoading ? null : _processDirectTransfer,
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("VALIDER LE TRANSFERT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: _isLoading 
+                  ? const CircularProgressIndicator(color: Colors.white) 
+                  : const Text("VALIDER LE TRANSFERT", 
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             )
           ],
@@ -143,8 +166,12 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
       decoration: InputDecoration(
         labelText: "Montant à transférer",
+        labelStyle: const TextStyle(fontSize: 16),
         suffixText: "FCFA",
+        prefixIcon: const Icon(Icons.attach_money),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+        filled: true,
+        fillColor: Colors.grey.shade50,
       ),
     );
   }
@@ -152,20 +179,42 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
   Widget _buildOperatorCard(String label, String op, TextEditingController ctrl, Function(String?) onCh) {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.grey.shade300)),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50, 
+        borderRadius: BorderRadius.circular(15), 
+        border: Border.all(color: Colors.grey.shade300),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 5),
           Row(
             children: [
               DropdownButton<String>(
                 value: op,
-                items: ['Orange Money', 'MTN MoMo'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(color: e.contains('Orange') ? Colors.orange : Colors.blue, fontWeight: FontWeight.bold)))).toList(),
+                underline: const SizedBox(),
+                items: ['Orange Money', 'MTN MoMo'].map((e) => DropdownMenuItem(
+                  value: e, 
+                  child: Text(e, style: TextStyle(
+                    color: e.contains('Orange') ? Colors.orange.shade800 : Colors.blue.shade800, 
+                    fontWeight: FontWeight.bold
+                  ))
+                )).toList(),
                 onChanged: onCh,
               ),
-              const SizedBox(width: 10),
-              Expanded(child: TextField(controller: ctrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(hintText: "N° Téléphone", border: InputBorder.none))),
+              const SizedBox(width: 15),
+              Expanded(
+                child: TextField(
+                  controller: ctrl, 
+                  keyboardType: TextInputType.phone, 
+                  decoration: const InputDecoration(
+                    hintText: "6XX XXX XXX", 
+                    border: InputBorder.none,
+                    icon: Icon(Icons.phone_android, size: 20),
+                  )
+                ),
+              ),
             ],
           )
         ],
