@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'dart:async'; // Ajouté pour le Timeout
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -10,13 +10,25 @@ class ApiService {
   // ==========================================
 
   static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/login'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"phone": phone, "pincode": pin}),
-    );
-    if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception("Identifiants incorrects");
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"phone": phone, "pincode": pin}),
+      ).timeout(const Duration(seconds: 45)); // Correction : Attendre le réveil de Render
+
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 200) {
+        return data; // Retourne l'objet user pour la navigation
+      } else {
+        throw Exception(data['message'] ?? "Identifiants incorrects");
+      }
+    } on TimeoutException {
+      throw Exception("Le serveur est en cours de démarrage, réessaie dans 10 secondes.");
+    } catch (e) {
+      throw Exception(e.toString());
+    }
   }
 
   static Future<void> registerUser(String name, String phone, String pin) async {
@@ -51,7 +63,6 @@ class ApiService {
     return 100;
   }
 
-  // ✅ CORRIGÉ : Accepte maintenant 2 arguments pour éviter l'erreur dans om_momo_screen.dart
   static Future<String> getRecipientName(String phone, String operator) async {
     final res = await http.get(Uri.parse('$baseUrl/users/check?phone=$phone&operator=$operator'));
     if (res.statusCode == 200) return jsonDecode(res.body)['fullname'];

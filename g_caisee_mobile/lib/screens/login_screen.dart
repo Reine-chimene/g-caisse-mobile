@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
+import '../services/api_service.dart';
 import 'register_screen.dart'; 
+import 'home_screen.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,17 +18,44 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  // Design G-CAISE (Yaoundé Style)
+  // Design G-CAISE
   final Color primaryColor = const Color(0xFFFF7900); 
   final Color textColor = const Color(0xFF1A1A1A);
 
   void _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
+      
       try {
-        // Logique de connexion ici
-        await Future.delayed(const Duration(seconds: 2));
-        // Navigator.push(...)
+        // 1. APPEL AU BACKEND
+        // Si les identifiants sont bons, result contiendra le Map de l'utilisateur
+        // Si c'est mauvais, ApiService lancera une Exception qui ira direct au 'catch'
+        final result = await ApiService.loginUser(
+          _phoneController.text.trim(),
+          _pinController.text.trim(),
+        );
+
+        // 2. NAVIGATION SI SUCCÈS
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HomeScreen(userData: result),
+            ),
+          );
+        }
+      } catch (e) {
+        // 3. GESTION DES ERREURS (Mauvais PIN, Timeout Render, etc.)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception:', '')),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -46,15 +77,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 60),
                 Text("Bon retour !", 
                   style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textColor)),
-                const Text("Connectez-vous à votre compte G-CAISE"),
+                const SizedBox(height: 8),
+                const Text("Connectez-vous à votre compte G-CAISE", 
+                  style: TextStyle(color: Colors.grey)),
                 const SizedBox(height: 40),
 
                 // Champ Téléphone
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     labelText: "Numéro de téléphone",
+                    hintText: "6XXXXXXXX",
                     prefixIcon: const Icon(Icons.phone_android),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -67,6 +102,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _pinController,
                   obscureText: _obscureText,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
                   decoration: InputDecoration(
                     labelText: "Code PIN",
                     prefixIcon: const Icon(Icons.lock_outline),
@@ -76,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  validator: (v) => v!.length < 4 ? "PIN invalide" : null,
+                  validator: (v) => v!.length < 4 ? "Le PIN doit avoir 4 chiffres" : null,
                 ),
                 const SizedBox(height: 40),
 
@@ -86,17 +125,31 @@ class _LoginScreenState extends State<LoginScreen> {
                     backgroundColor: primaryColor,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
                   ),
                   child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("SE CONNECTER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text("SE CONNECTER", 
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
                 
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
-                  },
-                  child: Text("Pas de compte ? Créer un compte", style: TextStyle(color: primaryColor)),
+                const SizedBox(height: 20),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text("Pas de compte ?"),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
+                      },
+                      child: Text("Créer un compte", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 )
               ],
             ),
