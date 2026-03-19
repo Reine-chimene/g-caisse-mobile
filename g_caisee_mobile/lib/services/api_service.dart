@@ -141,11 +141,34 @@ class ApiService {
   // 3. SERVICES (AIRTIME & FACTURES)
   // ==========================================
 
-  static Future<Map<String, dynamic>> buyAirtime({required int userId, required String phone, required double amount, required String operator}) async {
-    final res = await http.post(Uri.parse('$baseUrl/services/airtime'), headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId, "receiver_phone": phone, "amount": amount, "operator": operator}),
+  // Modifié pour supporter le crédit ET les forfaits Data
+  static Future<Map<String, dynamic>> buyAirtimeOrData({
+    required int userId, 
+    required String phoneNumber, 
+    required double amount, 
+    required String operator,
+    required String type, // "Crédit" ou "Data"
+    String? plan,        // "Jour", "Semaine", "Mois"
+  }) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/services/airtime'), 
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "user_id": userId, 
+        "receiver_phone": phoneNumber, 
+        "amount": amount, 
+        "operator": operator,
+        "service_type": type, // Précise si c'est du crédit ou internet
+        "plan_validity": plan // Optionnel, envoyé seulement si c'est Data
+      }),
     );
-    return res.statusCode == 200 ? jsonDecode(res.body) : throw Exception("Erreur Airtime");
+    
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    } else {
+      final error = jsonDecode(res.body);
+      throw Exception(error['message'] ?? "Erreur lors de l'opération");
+    }
   }
 
   static Future<Map<String, dynamic>> payBill({required int userId, required String contractNumber, required double amount, required String billType}) async {
