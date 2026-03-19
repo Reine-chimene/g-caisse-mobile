@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:file_picker/file_picker.dart'; // NOUVEAU
-import 'package:image_picker/image_picker.dart'; // NOUVEAU
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -34,7 +34,6 @@ class _ChatScreenState extends State<ChatScreen> {
   FlutterSoundRecorder? _recorder;
   bool _isRecording = false;
 
-  // Design System G-Caisse (Orange Max It)
   final Color primaryOrange = const Color(0xFFFF7900);
   final Color cardGrey = const Color(0xFF1E1E1E);
   final Color bgBlack = const Color(0xFF0F0F0F);
@@ -43,19 +42,17 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _fetchMessages();
-    _initRecorder(); // Initialise le micro
+    _initRecorder();
+    // Rafraîchissement automatique toutes les 3 secondes
     _timer = Timer.periodic(const Duration(seconds: 3), (timer) => _fetchMessages(isBackground: true));
   }
 
-  // Demande la permission et prépare le micro
   Future<void> _initRecorder() async {
     _recorder = FlutterSoundRecorder();
     final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) {
-      debugPrint("Permission micro refusée");
-      return;
+    if (status.isGranted) {
+      await _recorder!.openRecorder();
     }
-    await _recorder!.openRecorder();
   }
 
   @override
@@ -92,88 +89,37 @@ class _ChatScreenState extends State<ChatScreen> {
       await ApiService.sendMessage(widget.tontineId, myId, content);
       _fetchMessages(isBackground: true); 
       
-      Timer(const Duration(milliseconds: 300), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-        }
-      });
+      // Scroll vers le bas (index 0 car reverse: true)
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi du message")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Échec de l'envoi")));
       }
     }
   }
 
-  // --- LOGIQUE D'ENREGISTREMENT VOCAL ---
+  // --- LOGIQUE VOCALE ---
   Future<void> _startRecording() async {
     try {
-      await _recorder!.startRecorder(toFile: 'temp_audio.aac');
+      await _recorder!.startRecorder(toFile: 'vocal_${DateTime.now().millisecondsSinceEpoch}.aac');
       setState(() => _isRecording = true);
     } catch (e) {
-      debugPrint("Erreur d'enregistrement : $e");
+      debugPrint("Erreur micro: $e");
     }
   }
 
   Future<void> _stopRecordingAndSend() async {
     try {
-      await _recorder!.stopRecorder();
+      final path = await _recorder!.stopRecorder();
       setState(() => _isRecording = false);
-      _sendMessage(customContent: "[VOICE] Message vocal");
-    } catch (e) {
-      debugPrint("Erreur arrêt enregistrement : $e");
-    }
-  }
-
-  // --- NOUVEAU : ENVOI DE PIÈCE JOINTE ---
-  void _showAttachmentOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: cardGrey,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (BuildContext bc) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.image, color: Colors.blue),
-                title: const Text('Galerie Photo', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final ImagePicker picker = ImagePicker();
-                  final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-                  if (image != null) {
-                    _sendMessage(customContent: "[IMAGE] ${image.name}");
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.pink),
-                title: const Text('Prendre une photo', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final ImagePicker picker = ImagePicker();
-                  final XFile? photo = await picker.pickImage(source: ImageSource.camera);
-                  if (photo != null) {
-                    _sendMessage(customContent: "[PHOTO] ${photo.name}");
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.insert_drive_file, color: Colors.orange),
-                title: const Text('Document (PDF, Word...)', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  FilePickerResult? result = await FilePicker.platform.pickFiles();
-                  if (result != null) {
-                    _sendMessage(customContent: "[FILE] ${result.files.single.name}");
-                  }
-                },
-              ),
-            ],
-          ),
-        );
+      if (path != null) {
+        _sendMessage(customContent: "[VOICE] Message vocal");
       }
-    );
+    } catch (e) {
+      debugPrint("Erreur arrêt vocal: $e");
+    }
   }
 
   @override
@@ -182,77 +128,48 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: bgBlack,
       appBar: AppBar(
         backgroundColor: cardGrey,
-        elevation: 1,
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.tontineName, style: TextStyle(color: primaryOrange, fontSize: 16, fontWeight: FontWeight.bold)),
-            const Text("Salon de discussion", style: TextStyle(color: Colors.white60, fontSize: 11)),
+            const Text("En ligne", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.w500)),
           ],
         ),
-        iconTheme: IconThemeData(color: primaryOrange),
-        // ✅ NOUVEAU : BOUTONS APPEL ET CARTE EN HAUT
         actions: [
-          IconButton(
-            icon: const Icon(Icons.call),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Démarrage de l'appel de groupe...")));
-              // Ici, nous mettrons le lien vers ZegoCloud plus tard
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.map_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ouverture du Radar des membres...")));
-              // Ici, nous mettrons le lien vers l'écran Google Maps plus tard
-            },
-          ),
-          const SizedBox(width: 5),
+          IconButton(icon: const Icon(Icons.videocam_outlined), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.call_outlined), onPressed: () {}),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         children: [
-          // ZONE DES MESSAGES
           Expanded(
             child: isLoading
                 ? Center(child: CircularProgressIndicator(color: primaryOrange))
-                : messages.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        controller: _scrollController,
-                        reverse: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
-                        itemCount: messages.length,
-                        itemBuilder: (context, i) {
-                          final msg = messages[i];
-                          final bool isMe = msg['user_id'] == widget.userData['id'];
-                          
-                          // Détection des messages spéciaux
-                          String msgContent = msg['content']?.toString() ?? "";
-                          if (msgContent.startsWith("[VOICE]")) return _buildVoiceBubble(msg, isMe);
-                          if (msgContent.startsWith("[IMAGE]") || msgContent.startsWith("[PHOTO]")) return _buildFileBubble(msg, isMe, Icons.image, "Photo envoyée");
-                          if (msgContent.startsWith("[FILE]")) return _buildFileBubble(msg, isMe, Icons.insert_drive_file, "Fichier joint");
-                          
-                          return _buildMessageBubble(msg, isMe);
-                        },
-                      ),
+                : ListView.builder(
+                    controller: _scrollController,
+                    reverse: true, // Les nouveaux messages apparaissent en bas
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                    itemCount: messages.length,
+                    itemBuilder: (context, i) {
+                      final msg = messages[i];
+                      final bool isMe = msg['user_id'] == widget.userData['id'];
+                      String content = msg['content']?.toString() ?? "";
+
+                      if (content.startsWith("[VOICE]")) return _buildVoiceBubble(msg, isMe);
+                      if (content.startsWith("[IMAGE]") || content.startsWith("[PHOTO]")) {
+                        return _buildFileBubble(msg, isMe, Icons.camera_alt_rounded, "Image");
+                      }
+                      if (content.startsWith("[FILE]")) {
+                        return _buildFileBubble(msg, isMe, Icons.description_rounded, "Document");
+                      }
+
+                      return _buildMessageBubble(msg, isMe);
+                    },
+                  ),
           ),
-
-          // BARRE DE SAISIE
           _buildInputArea(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.chat_bubble_outline_rounded, size: 60, color: primaryOrange.withValues(alpha: 0.1)),
-          const SizedBox(height: 15),
-          const Text("Aucun message. Lancez la discussion !", style: TextStyle(color: Colors.white24)),
         ],
       ),
     );
@@ -260,177 +177,170 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputArea() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      decoration: BoxDecoration(
-        color: cardGrey,
-        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10)],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      color: cardGrey,
       child: SafeArea(
         child: Row(
           children: [
-            // ✅ NOUVEAU : BOUTON TROMBONE (PIÈCE JOINTE)
             IconButton(
-              icon: Icon(Icons.attach_file, color: primaryOrange),
+              icon: Icon(Icons.add_circle_outline, color: primaryOrange, size: 28),
               onPressed: _showAttachmentOptions,
             ),
-
             Expanded(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 15),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.2),
+                  color: Colors.black.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(25),
-                  border: Border.all(color: _isRecording ? Colors.red.withValues(alpha: 0.5) : Colors.white10),
                 ),
                 child: TextField(
                   controller: _msgController,
-                  enabled: !_isRecording, 
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  enabled: !_isRecording,
+                  style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: _isRecording ? "Enregistrement..." : "Écrivez ici...",
-                    hintStyle: TextStyle(color: _isRecording ? Colors.red : Colors.white24, fontSize: 14),
+                    hintText: _isRecording ? "Enregistrement..." : "Message...",
+                    hintStyle: TextStyle(color: _isRecording ? Colors.red : Colors.white24),
                     border: InputBorder.none,
                   ),
                 ),
               ),
             ),
+            const SizedBox(width: 8),
+            _isRecording 
+              ? const SizedBox.shrink() 
+              : GestureDetector(
+                  onTap: () => _sendMessage(),
+                  child: CircleAvatar(backgroundColor: primaryOrange, child: const Icon(Icons.send, color: Colors.white, size: 20)),
+                ),
             const SizedBox(width: 5),
-
-            // BOUTON MICROPHONE (Mode Voice)
             GestureDetector(
               onLongPress: _startRecording,
-              onLongPressEnd: (details) => _stopRecordingAndSend(),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: EdgeInsets.all(_isRecording ? 10 : 8),
-                decoration: BoxDecoration(
-                  color: _isRecording ? Colors.red : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isRecording ? Icons.mic : Icons.mic_none, 
-                  color: _isRecording ? Colors.white : primaryOrange, 
-                  size: _isRecording ? 28 : 24
-                ),
+              onLongPressEnd: (_) => _stopRecordingAndSend(),
+              child: CircleAvatar(
+                backgroundColor: _isRecording ? Colors.red : Colors.white10,
+                child: Icon(_isRecording ? Icons.stop : Icons.mic, color: _isRecording ? Colors.white : primaryOrange),
               ),
             ),
-
-            // BOUTON ENVOYER TEXTE
-            GestureDetector(
-              onTap: () => _sendMessage(),
-              child: CircleAvatar(
-                backgroundColor: primaryOrange,
-                radius: 20,
-                child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
-              ),
-            )
           ],
         ),
       ),
     );
   }
 
-  // BULLE TEXTE CLASSIQUE
   Widget _buildMessageBubble(Map msg, bool isMe) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          if (!isMe)
-            Padding(
-              padding: const EdgeInsets.only(left: 8, bottom: 4),
-              child: Text(msg['fullname'] ?? "Membre", style: TextStyle(color: primaryOrange, fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: isMe ? primaryOrange : const Color(0xFF2C2C2E),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(20),
-                topRight: const Radius.circular(20),
-                bottomLeft: isMe ? const Radius.circular(20) : Radius.zero,
-                bottomRight: isMe ? Radius.zero : const Radius.circular(20),
-              ),
-            ),
-            child: Text(
-              msg['content'] ?? "",
-              style: TextStyle(color: isMe ? Colors.white : Colors.white, fontSize: 14.5, height: 1.3),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          decoration: BoxDecoration(
+            color: isMe ? primaryOrange : const Color(0xFF2C2C2E),
+            borderRadius: BorderRadiusDirectional.only(
+              topStart: const Radius.circular(18),
+              topEnd: const Radius.circular(18),
+              bottomStart: isMe ? const Radius.circular(18) : Radius.zero,
+              bottomEnd: isMe ? Radius.zero : const Radius.circular(18),
             ),
           ),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isMe) Text(msg['fullname'] ?? "Membre", style: const TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+              Text(msg['content'] ?? "", style: const TextStyle(color: Colors.white, fontSize: 14)),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // BULLE VOCALE
   Widget _buildVoiceBubble(Map msg, bool isMe) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isMe ? primaryOrange : const Color(0xFF2C2C2E),
-          borderRadius: BorderRadius.circular(20),
+          color: isMe ? primaryOrange.withValues(alpha: 0.2) : const Color(0xFF2C2C2E),
+          borderRadius: BorderRadius.circular(15),
+          border: isMe ? Border.all(color: primaryOrange, width: 0.5) : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_circle_fill, color: Colors.white, size: 35),
+            Icon(Icons.play_arrow_rounded, color: isMe ? primaryOrange : Colors.white),
+            const SizedBox(width: 8),
+            const Text("0:04", style: TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(width: 10),
-            Container(
-              width: 100, height: 3,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(5)),
-              child: FractionallySizedBox(alignment: Alignment.centerLeft, widthFactor: 0.3, child: Container(color: Colors.white)),
-            ),
-            const SizedBox(width: 15),
-            const Icon(Icons.mic, color: Colors.white54, size: 16),
+            Icon(Icons.waves, color: isMe ? primaryOrange : Colors.white24),
           ],
         ),
       ),
     );
   }
 
-  // ✅ NOUVELLE BULLE FICHIER (Photos/Documents)
-  Widget _buildFileBubble(Map msg, bool isMe, IconData icon, String label) {
-    String filename = msg['content'].toString().split("] ").last; // Récupère le nom du fichier
-    
+  Widget _buildFileBubble(Map msg, bool isMe, IconData icon, String type) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isMe ? primaryOrange.withValues(alpha: 0.2) : const Color(0xFF2C2C2E),
-          border: Border.all(color: isMe ? primaryOrange : Colors.transparent),
+          color: const Color(0xFF2C2C2E),
           borderRadius: BorderRadius.circular(15),
+          border: isMe ? Border.all(color: primaryOrange) : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: isMe ? primaryOrange : Colors.grey.shade700, borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 3),
-                SizedBox(
-                  width: 120,
-                  child: Text(filename, style: const TextStyle(color: Colors.white54, fontSize: 11), overflow: TextOverflow.ellipsis),
-                )
-              ],
-            )
+            Icon(icon, color: primaryOrange),
+            const SizedBox(width: 10),
+            Text(type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
+    );
+  }
+
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardGrey,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _attachIcon(Icons.image, "Galerie", Colors.blue, () async {
+              final img = await ImagePicker().pickImage(source: ImageSource.gallery);
+              if (img != null) _sendMessage(customContent: "[IMAGE] ${img.name}");
+              Navigator.pop(context);
+            }),
+            _attachIcon(Icons.camera_alt, "Caméra", Colors.pink, () async {
+              final img = await ImagePicker().pickImage(source: ImageSource.camera);
+              if (img != null) _sendMessage(customContent: "[PHOTO] ${img.name}");
+              Navigator.pop(context);
+            }),
+            _attachIcon(Icons.insert_drive_file, "Fichier", Colors.orange, () async {
+              final res = await FilePicker.platform.pickFiles();
+              if (res != null) _sendMessage(customContent: "[FILE] ${res.files.single.name}");
+              Navigator.pop(context);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _attachIcon(IconData icon, String label, Color color, VoidCallback onTap) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filledTonal(onPressed: onTap, icon: Icon(icon, color: color)),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ],
     );
   }
 }

@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart'; 
-import 'rules_screen.dart'; 
-import 'login_screen.dart'; 
+import 'package:flutter/cupertino.dart';
+import 'login_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:g_caisee_mobile/screens/login_screen.dart';
 import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -14,257 +17,286 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final Color primaryColor = const Color(0xFFD4AF37); 
-  final Color backgroundColor = const Color(0xFFF5F6F8); 
-  final Color cardColor = Colors.white;
+  final Color primaryColor = const Color(0xFFFF7900); // Orange G-CAISE
+  final Color backgroundColor = const Color(0xFFF5F6F8);
 
-  // Variables d'état synchronisées
-  bool isDarkMode = false; 
+  bool isDarkMode = false;
   bool pushNotifications = true;
   double balance = 0.0;
   int trustScore = 0;
   bool isLoading = true;
+  File? _imageFile;
 
-  // AJOUT : Variables locales pour refléter les changements sans recharger l'app
   late String localFullname;
   late String localPhone;
 
   @override
   void initState() {
     super.initState();
-    // On initialise avec les données reçues
-    localFullname = widget.userData?['fullname'] ?? "Membre G-Caisse";
+    localFullname = widget.userData?['fullname'] ?? "Membre G-CAISE";
     localPhone = widget.userData?['phone'] ?? "+237 ---";
+    _loadSettings();
     _loadProfileData();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isDarkMode = prefs.getBool('isDarkMode') ?? false;
+    });
+  }
+
+  Future<void> _toggleDarkMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isDarkMode = value;
+      prefs.setBool('isDarkMode', value);
+    });
   }
 
   Future<void> _loadProfileData() async {
     try {
-      int userId = widget.userData?['id'] ?? 1; 
-      double fetchedBalance = await ApiService.getUserBalance(userId);
-      int fetchedScore = await ApiService.getTrustScore(userId);
+      int userId = widget.userData?['id'] ?? 0;
+      final results = await Future.wait([
+        ApiService.getUserBalance(userId),
+        ApiService.getTrustScore(userId),
+      ]);
 
       if (mounted) {
         setState(() {
-          balance = fetchedBalance;
-          trustScore = fetchedScore;
+          balance = (results[0] as num).toDouble();
+          trustScore = (results[1] as num).toInt();
           isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() { isLoading = false; });
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text("Photo de profil"),
+        message: const Text("Choisissez une source pour votre photo"),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () { Navigator.pop(context); _getFromSource(ImageSource.camera); },
+            child: const Text("Prendre une photo"),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () { Navigator.pop(context); _getFromSource(ImageSource.gallery); },
+            child: const Text("Choisir dans la galerie"),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Annuler"),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getFromSource(ImageSource source) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: source, imageQuality: 50);
+
+    if (image != null) {
+      setState(() {
+        _imageFile = File(image.path);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    int userId = widget.userData?['id'] ?? 1;
-
-    // Couleurs dynamiques
-    Color currentBg = isDarkMode ? const Color(0xFF121212) : backgroundColor;
-    Color currentCard = isDarkMode ? const Color(0xFF1E1E1E) : cardColor;
-    Color currentText = isDarkMode ? Colors.white : const Color(0xFF1A1A1A);
-    Color currentSubText = isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+    final bool dark = isDarkMode;
+    final Color currentBg = dark ? const Color(0xFF121212) : backgroundColor;
+    final Color currentCard = dark ? const Color(0xFF1E1E1E) : Colors.white;
+    final Color currentText = dark ? Colors.white : const Color(0xFF1A1A1A);
+    final Color currentSubText = dark ? Colors.white70 : Colors.grey[600]!;
 
     return Scaffold(
-      backgroundColor: currentBg, // Applique le fond
+      backgroundColor: currentBg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // --- EN-TÊTE PROFIL ---
-              Center(
-                child: Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: primaryColor, width: 3),
-                      ),
-                      child: const CircleAvatar(
-                        radius: 50,
-                        backgroundImage: AssetImage('assets/logo.jpeg'),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle, border: Border.all(color: currentBg, width: 3)),
-                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
-                    )
-                  ],
-                ),
-              ),
-              const SizedBox(height: 15),
-              // On utilise les variables LOCALES ici
-              Text(localFullname, style: TextStyle(color: currentText, fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 5),
-              Text(localPhone, style: TextStyle(color: currentSubText, fontSize: 15)),
-              
-              const SizedBox(height: 35),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          color: currentBg,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+            child: Column(
+              children: [
+                _buildHeader(currentText, currentSubText),
+                const SizedBox(height: 35),
+                _buildStatsRow(currentCard, currentText, currentSubText),
+                const SizedBox(height: 30),
+                
+                _buildSectionTitle("Compte", currentText),
+                _buildSettingsBlock(currentCard, [
+                  _buildActionTile(Icons.person_outline, "Informations personnelles", currentText, () async {
+                    final result = await Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (c) => EditProfileScreen(
+                        userId: widget.userData?['id'] ?? 0, 
+                        currentName: localFullname, 
+                        currentPhone: localPhone
+                      ))
+                    );
+                    if (result != null && result is Map<String, String> && mounted) {
+                      setState(() {
+                        localFullname = result['name']!;
+                        localPhone = result['phone']!;
+                      });
+                    }
+                  }),
+                  _buildDivider(),
+                  _buildActionTile(Icons.lock_outline, "Sécurité et PIN", currentText, () {}),
+                ]),
 
-              // --- STATISTIQUES ---
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                decoration: BoxDecoration(
-                  color: currentCard,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildStatItem("Solde Actuel", "${balance.toStringAsFixed(0)} F", currentText, currentSubText),
-                    Container(width: 1, height: 40, color: Colors.grey.withOpacity(0.2)),
-                    _buildStatItem("Confiance", "$trustScore / 100", currentText, currentSubText),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
+                const SizedBox(height: 25),
 
-              // --- SECTIONS ---
-              _buildSectionTitle("Compte", currentText),
-              _buildSettingsBlock(currentCard, [
-                _buildActionTile(Icons.person_outline, "Informations personnelles", currentText, currentSubText, () async {
-                  // CORRECTION : On attend le retour de la page d'édition
-                  final result = await Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (c) => EditProfileScreen(userId: userId, currentName: localFullname, currentPhone: localPhone))
-                  );
-                  
-                  // Si le profil a été mis à jour, on rafraîchit l'affichage local
-                  if (result != null && result is Map<String, String>) {
-                    setState(() {
-                      localFullname = result['name']!;
-                      localPhone = result['phone']!;
-                    });
-                  }
-                }),
-                _buildDivider(),
-                _buildActionTile(Icons.lock_outline, "Sécurité et PIN", currentText, currentSubText, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => const ChangePinScreen()));
-                }),
-              ]),
+                _buildSectionTitle("Préférences", currentText),
+                _buildSettingsBlock(currentCard, [
+                  _buildToggleTile(Icons.dark_mode_outlined, "Mode Sombre", isDarkMode, currentText, (val) {
+                    _toggleDarkMode(val);
+                  }),
+                  _buildDivider(),
+                  _buildToggleTile(Icons.notifications_none, "Notifications push", pushNotifications, currentText, (val) {
+                    setState(() => pushNotifications = val);
+                  }),
+                ]),
 
-              const SizedBox(height: 25),
-
-              _buildSectionTitle("Préférences", currentText),
-              _buildSettingsBlock(currentCard, [
-                _buildToggleTile(Icons.dark_mode_outlined, "Mode Sombre", isDarkMode, currentText, currentSubText, (val) {
-                  // Le setState va maintenant bien redessiner la page avec les couleurs dynamiques
-                  setState(() => isDarkMode = val);
-                }),
-                _buildDivider(),
-                _buildToggleTile(Icons.notifications_none, "Notifications push", pushNotifications, currentText, currentSubText, (val) {
-                  setState(() => pushNotifications = val);
-                }),
-              ]),
-              
-              // ... reste du code identique ...
-              const SizedBox(height: 35),
-               SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: TextButton.icon(
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.red.withOpacity(0.1),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  icon: const Icon(Icons.logout, color: Colors.red, size: 22),
-                  label: const Text("Se déconnecter", style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)),
-                  onPressed: () => _showLogoutConfirmation(context, currentCard, currentText),
-                ),
-              ),
-            ],
+                const SizedBox(height: 40),
+                _buildLogoutButton(),
+                const SizedBox(height: 20),
+                Text("G-CAISE v1.0.2 - Yaoundé, CM", 
+                  style: TextStyle(color: currentSubText.withValues(alpha: 0.4), fontSize: 11)),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Les fonctions _build (StatItem, SectionTitle, etc.) restent identiques à ton code original
-  Widget _buildStatItem(String label, String value, Color textColor, Color subTextColor) {
+  Widget _buildHeader(Color txtColor, Color subTxtColor) {
     return Column(
       children: [
-        Text(label, style: TextStyle(color: subTextColor, fontSize: 13)),
-        const SizedBox(height: 8),
-        isLoading 
-          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-          : Text(value, style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
+        Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: primaryColor, width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: 55,
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage: _imageFile != null 
+                    ? FileImage(_imageFile!) 
+                    : const AssetImage('assets/logo.jpeg') as ImageProvider,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: primaryColor,
+                child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+              ),
+            )
+          ],
+        ),
+        const SizedBox(height: 15),
+        Text(localFullname, style: TextStyle(color: txtColor, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(localPhone, style: TextStyle(color: subTxtColor, fontSize: 14)),
       ],
     );
   }
 
-  Widget _buildSectionTitle(String title, Color textColor) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 10, bottom: 10),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(title, style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-
-  Widget _buildSettingsBlock(Color bgColor, List<Widget> children) {
+  Widget _buildStatsRow(Color cardCol, Color txtCol, Color subTxtCol) {
     return Container(
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(children: children),
-    );
-  }
-
-  Widget _buildActionTile(IconData icon, String title, Color textColor, Color iconColor, VoidCallback onTap) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: iconColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: iconColor),
-      ),
-      title: Text(title, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500)),
-      trailing: Icon(Icons.arrow_forward_ios, color: Colors.grey.shade400, size: 16),
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildToggleTile(IconData icon, String title, bool value, Color textColor, Color iconColor, ValueChanged<bool> onChanged) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: iconColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: iconColor),
-      ),
-      title: Text(title, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500)),
-      trailing: CupertinoSwitch(
-        activeColor: primaryColor,
-        value: value,
-        onChanged: onChanged,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      decoration: BoxDecoration(color: cardCol, borderRadius: BorderRadius.circular(24)),
+      child: Row(
+        children: [
+          Expanded(child: _buildStatItem("Solde", "${balance.toStringAsFixed(0)} F", txtCol, subTxtCol)),
+          Container(width: 1, height: 30, color: Colors.grey.withValues(alpha: 0.2)),
+          Expanded(child: _buildStatItem("Score", "$trustScore%", txtCol, subTxtCol)),
+        ],
       ),
     );
   }
 
-  Widget _buildDivider() {
-    return Divider(height: 1, indent: 60, endIndent: 20, color: Colors.grey.withOpacity(0.1));
+  Widget _buildStatItem(String label, String value, Color txtCol, Color subTxtCol) {
+    return Column(children: [
+      Text(label, style: TextStyle(color: subTxtCol, fontSize: 12)),
+      const SizedBox(height: 5),
+      Text(value, style: TextStyle(color: txtCol, fontSize: 18, fontWeight: FontWeight.bold)),
+    ]);
   }
 
-  void _showLogoutConfirmation(BuildContext context, Color cardColor, Color textColor) {
-    showDialog(
+  Widget _buildSectionTitle(String title, Color textColor) => Padding(
+    padding: const EdgeInsets.only(left: 10, bottom: 10),
+    child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold))),
+  );
+
+  Widget _buildSettingsBlock(Color bgColor, List<Widget> children) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+    child: Column(children: children),
+  );
+
+  Widget _buildActionTile(IconData icon, String title, Color txtColor, VoidCallback onTap) => ListTile(
+    leading: Icon(icon, color: primaryColor),
+    title: Text(title, style: TextStyle(color: txtColor, fontSize: 14)),
+    trailing: const Icon(Icons.chevron_right, size: 20),
+    onTap: onTap,
+  );
+
+  Widget _buildToggleTile(IconData icon, String title, bool val, Color txtColor, ValueChanged<bool> onChanged) => ListTile(
+    leading: Icon(icon, color: primaryColor),
+    title: Text(title, style: TextStyle(color: txtColor, fontSize: 14)),
+    trailing: CupertinoSwitch(activeColor: primaryColor, value: val, onChanged: onChanged),
+  );
+
+  Widget _buildDivider() => Divider(height: 1, indent: 50, endIndent: 20, color: Colors.grey.withValues(alpha: 0.1));
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 54,
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          backgroundColor: Colors.red.withValues(alpha: 0.08), 
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+        ),
+        icon: const Icon(Icons.logout, color: Colors.red, size: 20),
+        label: const Text("DÉCONNEXION", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        onPressed: () => _showLogoutConfirmation(),
+      ),
+    );
+  }
+
+  void _showLogoutConfirmation() {
+    showCupertinoDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Déconnexion", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("Quitter ?"),
+        content: const Text("Vous devrez vous reconnecter pour accéder à vos tontines."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
-            },
-            child: const Text("Déconnexion", style: TextStyle(color: Colors.white)),
+          CupertinoDialogAction(child: const Text("Annuler"), onPressed: () => Navigator.pop(context)),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (c) => const LoginScreen()), (r) => false),
+            child: const Text("Déconnexion"),
           ),
         ],
       ),
@@ -272,78 +304,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// --- PAGE ÉDITION PROFIL CORRIGÉE ---
-class EditProfileScreen extends StatefulWidget {
+// --- CLASSE CORRECTIVE POUR LA NAVIGATION ---
+class EditProfileScreen extends StatelessWidget {
   final int userId;
   final String currentName;
   final String currentPhone;
 
-  const EditProfileScreen({super.key, required this.userId, required this.currentName, required this.currentPhone});
-
-  @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
-}
-
-class _EditProfileScreenState extends State<EditProfileScreen> {
-  late TextEditingController nameController;
-  late TextEditingController phoneController;
-  bool isUpdating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    nameController = TextEditingController(text: widget.currentName);
-    phoneController = TextEditingController(text: widget.currentPhone);
-  }
-
-  Future<void> _handleUpdate() async {
-    setState(() => isUpdating = true);
-    try {
-      await ApiService.updateProfile(widget.userId, nameController.text, phoneController.text);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Profil mis à jour !"), backgroundColor: Colors.green));
-        
-        // CORRECTION : On renvoie les nouvelles données à l'écran précédent
-        Navigator.pop(context, {
-          'name': nameController.text,
-          'phone': phoneController.text,
-        });
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("❌ Erreur"), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => isUpdating = false);
-    }
-  }
+  const EditProfileScreen({
+    super.key, 
+    required this.userId, 
+    required this.currentName, 
+    required this.currentPhone
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Modifier le profil")),
+      appBar: AppBar(
+        title: const Text("Modifier le profil", style: TextStyle(color: Colors.black)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(25.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Nom complet", border: OutlineInputBorder())),
+            const Icon(Icons.construction, size: 80, color: Colors.orange),
             const SizedBox(height: 20),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Numéro", border: OutlineInputBorder())),
-            const SizedBox(height: 40),
+            Text("Interface en cours de développement pour $currentName", textAlign: TextAlign.center),
+            const SizedBox(height: 30),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), minimumSize: const Size(double.infinity, 55)),
-              onPressed: isUpdating ? null : _handleUpdate,
-              child: const Text("ENREGISTRER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              onPressed: () => Navigator.pop(context), 
+              child: const Text("Retour")
             )
           ],
         ),
       ),
     );
-  }
-}
-
-class ChangePinScreen extends StatelessWidget {
-  const ChangePinScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: const Text("Sécurité PIN")), body: const Center(child: Text("En construction")));
   }
 }

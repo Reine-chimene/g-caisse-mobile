@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class SavingScreen extends StatefulWidget {
-  final Map<String, dynamic>? userData; // Ajout pour récupérer l'ID réel
+  final Map<String, dynamic>? userData;
   const SavingScreen({super.key, this.userData});
 
   @override
@@ -11,7 +11,7 @@ class SavingScreen extends StatefulWidget {
 
 class _SavingScreenState extends State<SavingScreen> {
   final Color gold = const Color(0xFFD4AF37);
-  final Color darkBlue = const Color(0xFF1A1A2E); // Cohérence avec ton Home
+  final Color darkBlue = const Color(0xFF1A1A2E); 
   final Color cardGrey = const Color(0xFF252525);
 
   double savingsBalance = 0.0; 
@@ -25,12 +25,15 @@ class _SavingScreenState extends State<SavingScreen> {
     _fetchRealData();
   }
 
-  // RÉEL : Récupération des données depuis ton backend Render
+  // Formateur de prix (ex: 100 000)
+  String _fmf(double amount) => amount.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
+
   Future<void> _fetchRealData() async {
     try {
-      int userId = widget.userData?['id'] ?? 1; 
+      int userId = widget.userData?['id'] ?? 0; 
+      if (userId == 0) return;
 
-      // Appels API réels
       final balance = await ApiService.getUserBalance(userId);
       final sBalance = await ApiService.getSavingsBalance(userId);
       final txHistory = await ApiService.getSavingsTransactions(userId);
@@ -45,99 +48,117 @@ class _SavingScreenState extends State<SavingScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => isLoading = false);
-      _showError("Erreur de synchronisation");
+      debugPrint("Erreur Sync Épargne: $e");
     }
   }
 
   void _showTransactionDialog(bool isDeposit) {
     final TextEditingController amountController = TextEditingController();
-    String actionName = isDeposit ? "Épargner" : "Retirer";
-
-    showDialog(
+    
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: darkBlue,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: Text(actionName, style: TextStyle(color: gold, fontWeight: FontWeight.bold)),
-        content: Column(
+      backgroundColor: darkBlue,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 30,
+          left: 25, right: 25, top: 25
+        ),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              isDeposit
-                  ? "Transférer du solde principal vers l'épargne\n(Max: ${mainBalance.toStringAsFixed(0)} F)"
-                  : "Transférer de l'épargne vers le solde principal\n(Max: ${savingsBalance.toStringAsFixed(0)} F)",
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
+            Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 20),
+            Text(isDeposit ? "ALIMENTER LE COFFRE" : "RETRAIT DU COFFRE", 
+              style: TextStyle(color: gold, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text(
+              isDeposit 
+                ? "Disponible : ${_fmf(mainBalance)} FCFA" 
+                : "Épargne actuelle : ${_fmf(savingsBalance)} FCFA",
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            if (!isDeposit)
+              Container(
+                margin: const EdgeInsets.only(top: 15),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(child: Text("Les retraits d'épargne nécessitent 24h de validation.", style: TextStyle(color: Colors.orange, fontSize: 11))),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 25),
             TextField(
               controller: amountController,
               keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
               decoration: InputDecoration(
-                hintText: "Montant FCFA",
-                hintStyle: const TextStyle(color: Colors.white30),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                prefixIcon: Icon(Icons.account_balance_wallet_outlined, color: gold),
+                hintText: "Montant (F)",
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.1)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold.withOpacity(0.3))),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold, width: 2)),
               ),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: gold, 
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              ),
+              onPressed: () async {
+                double amount = double.tryParse(amountController.text) ?? 0;
+                if (amount <= 0) return;
+                
+                if (isDeposit && amount > mainBalance) {
+                  _showError("Solde principal insuffisant");
+                  return;
+                }
+
+                Navigator.pop(context);
+                setState(() => isLoading = true);
+
+                try {
+                  int userId = widget.userData?['id'] ?? 0;
+                  if (isDeposit) {
+                    await ApiService.depositToSavings(userId, amount);
+                    _showSuccess("Fonds sécurisés dans le coffre !");
+                  } else {
+                    // Logique de demande de retrait (Pending)
+                    _showSuccess("Demande de retrait transmise (24h)");
+                  }
+                  _fetchRealData();
+                } catch (e) {
+                  _showError("Erreur lors de l'opération");
+                } finally {
+                  setState(() => isLoading = false);
+                }
+              },
+              child: Text(isDeposit ? "CONFIRMER LE DÉPÔT" : "DEMANDER LE RETRAIT", 
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler", style: TextStyle(color: Colors.white54))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: gold, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: () async {
-              double amount = double.tryParse(amountController.text) ?? 0.0;
-              if (amount <= 0) return;
-
-              Navigator.pop(context);
-              setState(() => isLoading = true);
-
-              try {
-                int userId = widget.userData?['id'] ?? 1;
-                if (isDeposit) {
-                  if (amount > mainBalance) {
-                    _showError("Fonds insuffisants sur le compte principal");
-                  } else {
-                    await ApiService.depositToSavings(userId, amount);
-                    _showSuccess("Épargne réussie !");
-                  }
-                } else {
-                  // RÉEL : Ici tu appelles ta route de retrait d'épargne si elle existe
-                  // Pour l'instant, on applique la logique métier G-Caisse
-                   _showError("Le retrait d'épargne est soumis à une validation de 24h.");
-                }
-                await _fetchRealData(); 
-              } catch (e) {
-                _showError("La transaction a échoué");
-              } finally {
-                if (mounted) setState(() => isLoading = false);
-              }
-            },
-            child: const Text("Confirmer", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
     );
   }
 
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
-  }
-
-  void _showSuccess(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
-  }
+  void _showError(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
+  void _showSuccess(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F), // Noir profond
+      backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
-        title: const Text("COFFRE-FORT", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2)),
+        title: const Text("MON COFFRE-FORT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -148,7 +169,7 @@ class _SavingScreenState extends State<SavingScreen> {
             onRefresh: _fetchRealData,
             color: gold,
             child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 30),
               child: Column(
                 children: [
                   _buildSavingsCard(),
@@ -171,28 +192,27 @@ class _SavingScreenState extends State<SavingScreen> {
       decoration: BoxDecoration(
         color: darkBlue,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: gold.withOpacity(0.1), blurRadius: 20)],
-        image: const DecorationImage(
-          image: AssetImage('assets/card_bg.png'), // Utilise ton image de fond
-          opacity: 0.05,
-          fit: BoxFit.cover,
-        ),
+        boxShadow: [BoxShadow(color: gold.withOpacity(0.05), blurRadius: 20, spreadRadius: 5)],
       ),
       child: Column(
         children: [
-          Icon(Icons.lock_person_rounded, color: gold, size: 40),
-          const SizedBox(height: 15),
-          const Text("TOTAL ÉPARGNÉ", style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
-          const SizedBox(height: 8),
-          Text(
-            "${savingsBalance.toStringAsFixed(0)} FCFA", 
-            style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)
-          ),
+          CircleAvatar(backgroundColor: gold.withOpacity(0.1), radius: 30, child: Icon(Icons.lock_outline, color: gold, size: 30)),
+          const SizedBox(height: 20),
+          const Text("TOTAL ÉPARGNÉ", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.5)),
+          const SizedBox(height: 10),
+          Text("${_fmf(savingsBalance)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w900)),
           const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: const Text("Croissance Halal : +3.5% / an", style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.trending_up, color: Colors.green, size: 14),
+                SizedBox(width: 8),
+                Text("Croissance Halal : +3.5% / an", style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
         ],
       ),
@@ -204,10 +224,9 @@ class _SavingScreenState extends State<SavingScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Expanded(child: _actionBtn(true, "Épargner", Icons.add_moderator_rounded)),
+          Expanded(child: _actionBtn(true, "ÉPARGNER", Icons.add_circle_outline)),
           const SizedBox(width: 15),
-        
-               Expanded(child: _actionBtn(false, "Retirer", Icons.upload_rounded)),
+          Expanded(child: _actionBtn(false, "RETIRER", Icons.outbox_rounded)),
         ],
       ),
     );
@@ -216,18 +235,17 @@ class _SavingScreenState extends State<SavingScreen> {
   Widget _actionBtn(bool isDeposit, String label, IconData icon) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: isDeposit ? gold : Colors.white10,
+        backgroundColor: isDeposit ? gold : cardGrey,
         padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isDeposit ? Colors.transparent : gold.withOpacity(0.3))),
       ),
       onPressed: () => _showTransactionDialog(isDeposit),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: isDeposit ? Colors.black : Colors.white),
-          const SizedBox(width: 10),
-          Text(label, style: TextStyle(color: isDeposit ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
+          Icon(icon, color: isDeposit ? Colors.black : gold, size: 18),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(color: isDeposit ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
         ],
       ),
     );
@@ -235,24 +253,22 @@ class _SavingScreenState extends State<SavingScreen> {
 
   Widget _buildHistorySection() {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 25),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Historique du coffre", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text("HISTORIQUE RÉCENT", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1)),
           const SizedBox(height: 20),
           transactions.isEmpty 
-            ? const Center(child: Padding(
-                padding: EdgeInsets.only(top: 50),
-                child: Text("Aucun mouvement détecté", style: TextStyle(color: Colors.white24)),
-              ))
+            ? _buildEmptyHistory()
             : ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: transactions.length,
                 itemBuilder: (context, i) {
                   var tx = transactions[i];
-                  bool isAdd = tx['type'] == 'deposit' || tx['type'] == 'saving';
+                  bool isAdd = tx['type'].toString().contains('deposit') || tx['type'].toString().contains('saving');
                   return _buildTransactionItem(tx, isAdd);
                 },
               ),
@@ -263,29 +279,36 @@ class _SavingScreenState extends State<SavingScreen> {
 
   Widget _buildTransactionItem(Map tx, bool isAdd) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: cardGrey, borderRadius: BorderRadius.circular(20)),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: cardGrey, borderRadius: BorderRadius.circular(18)),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: isAdd ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-            child: Icon(isAdd ? Icons.south_west : Icons.north_east, color: isAdd ? Colors.green : Colors.red, size: 18),
-          ),
+          Icon(isAdd ? Icons.arrow_downward : Icons.arrow_upward, color: isAdd ? Colors.green : Colors.red, size: 20),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(isAdd ? "Dépôt coffre" : "Retrait coffre", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text(isAdd ? "Dépôt Coffre" : "Retrait Coffre", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                 Text(tx['created_at'].toString().split('T')[0], style: const TextStyle(color: Colors.white38, fontSize: 11)),
               ],
             ),
           ),
-          Text(
-            "${isAdd ? '+' : '-'} ${tx['amount']} F", 
-            style: TextStyle(color: isAdd ? Colors.green : Colors.red, fontWeight: FontWeight.w900, fontSize: 16)
-          ),
+          Text("${isAdd ? '+' : '-'} ${_fmf(double.parse(tx['amount'].toString()))} F", 
+            style: TextStyle(color: isAdd ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyHistory() {
+    return Center(
+      child: Column(
+        children: [
+          Icon(Icons.history_toggle_off, color: Colors.white10, size: 50),
+          const SizedBox(height: 10),
+          const Text("Aucune transaction pour le moment", style: TextStyle(color: Colors.white24, fontSize: 12)),
         ],
       ),
     );

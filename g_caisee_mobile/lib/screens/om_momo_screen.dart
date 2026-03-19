@@ -17,10 +17,10 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
   String _senderOperator = 'Orange Money';
   String _receiverOperator = 'MTN MoMo';
   bool _isLoading = false;
+  String _recipientName = ""; 
 
-  final Color primaryColor = const Color(0xFFFF7900);
+  final Color orangeColor = const Color(0xFFFF7900);
 
-  // ✅ LOGIQUE D'INVERSION DES OPÉRATEURS
   void _switchOperators() {
     setState(() {
       String tempOp = _senderOperator;
@@ -33,28 +33,53 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     });
   }
 
-  // ✅ APPEL RÉEL CORRIGÉ
-  void _processDirectTransfer() async {
+  void _startVerification() async {
     if (_amountController.text.isEmpty || _receiverPhoneController.text.isEmpty) {
-      _showSnackBar("Veuillez remplir tous les champs", Colors.red);
+      _showSnackBar("Veuillez remplir le montant et le numéro", Colors.red);
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // On convertit le nom lisible en identifiant pour l'API (orange ou mtn)
-      String opForApi = _senderOperator.contains('Orange') ? 'orange' : 'mtn';
+      String opForApi = _receiverOperator.contains('Orange') ? 'orange' : 'mtn';
+      
+      // Note : Cette erreur "undefined_method" disparaîtra quand tu mettras à jour ApiService
+      final name = await ApiService.getRecipientName(
+        _receiverPhoneController.text.trim(), 
+        opForApi
+      );
 
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _recipientName = name;
+        });
+        _showConfirmationSheet();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnackBar("Bénéficiaire introuvable", Colors.red);
+      }
+    }
+  }
+
+  void _executeFinalTransfer() async {
+    setState(() => _isLoading = true);
+    try {
+      String opForApi = _senderOperator.contains('Orange') ? 'orange' : 'mtn';
       final result = await ApiService.processDirectTransfer(
         senderId: widget.userData?['id'] ?? 0,
-        receiverPhone: _receiverPhoneController.text,
+        receiverPhone: _receiverPhoneController.text.trim(),
         amount: double.parse(_amountController.text),
-        operator: opForApi, // ✅ Paramètre corrigé ici
+        operator: opForApi,
       );
 
       if (mounted) {
         setState(() => _isLoading = false);
+        _amountController.clear();
+        _receiverPhoneController.clear();
         _showSuccessDialog(result['message'] ?? "Transfert réussi");
       }
     } catch (e) {
@@ -65,7 +90,47 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     }
   }
 
-  void _showSnackBar(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c));
+  void _showConfirmationSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(25),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 20),
+            const Text("CONFIRMER LE TRANSFERT", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 20),
+            // Correction FontWeight.black -> FontWeight.w900
+            Text("${_amountController.text} FCFA", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+            const Icon(Icons.arrow_downward, color: Colors.blue, size: 30),
+            const SizedBox(height: 10),
+            Text(_recipientName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
+            Text("Vers le numéro : ${_receiverPhoneController.text}", style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _executeFinalTransfer();
+                },
+                child: const Text("OUI, ENVOYER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("ANNULER", style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSnackBar(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
 
   void _showSuccessDialog(String message) {
     showDialog(
@@ -76,11 +141,7 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
         content: Text(message, textAlign: TextAlign.center),
         actions: [
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor, 
-              minimumSize: const Size(double.infinity, 45),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: orangeColor, minimumSize: const Size(double.infinity, 45)),
             onPressed: () => Navigator.pop(context),
             child: const Text("OK", style: TextStyle(color: Colors.white)),
           )
@@ -94,8 +155,8 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Transfert OM ↔ MoMo"), 
-        backgroundColor: primaryColor, 
+        title: const Text("Transfert OM ↔ MoMo", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
+        backgroundColor: orangeColor, 
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -104,10 +165,8 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
         child: Column(
           children: [
             _buildAmountField(),
-            const SizedBox(height: 25),
-            
-            // SECTION DÉPART
-            _buildOperatorCard("DEPUIS", _senderOperator, _senderPhoneController, (val) {
+            const SizedBox(height: 30),
+            _buildOperatorCard("DEPUIS MON COMPTE", _senderOperator, _senderPhoneController, (val) {
               setState(() {
                 _senderOperator = val!;
                 if (_senderOperator == _receiverOperator) {
@@ -115,18 +174,14 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                 }
               });
             }),
-
-            // ✅ LE BOUTON SWAP
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: IconButton(
-                icon: Icon(Icons.swap_vert_circle, size: 55, color: primaryColor),
+                icon: Icon(Icons.swap_vert_circle, size: 60, color: orangeColor),
                 onPressed: _switchOperators,
               ),
             ),
-
-            // SECTION ARRIVÉE
-            _buildOperatorCard("VERS", _receiverOperator, _receiverPhoneController, (val) {
+            _buildOperatorCard("VERS LE DESTINATAIRE", _receiverOperator, _receiverPhoneController, (val) {
               setState(() {
                 _receiverOperator = val!;
                 if (_receiverOperator == _senderOperator) {
@@ -134,22 +189,19 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                 }
               });
             }),
-
             const SizedBox(height: 40),
-            
             SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 60,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor, 
+                  backgroundColor: orangeColor, 
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 2,
                 ),
-                onPressed: _isLoading ? null : _processDirectTransfer,
+                onPressed: _isLoading ? null : _startVerification,
                 child: _isLoading 
                   ? const CircularProgressIndicator(color: Colors.white) 
-                  : const Text("VALIDER LE TRANSFERT", 
+                  : const Text("VÉRIFIER ET ENVOYER", 
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             )
@@ -163,12 +215,11 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     return TextField(
       controller: _amountController,
       keyboardType: TextInputType.number,
-      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
       decoration: InputDecoration(
         labelText: "Montant à transférer",
-        labelStyle: const TextStyle(fontSize: 16),
         suffixText: "FCFA",
-        prefixIcon: const Icon(Icons.attach_money),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         filled: true,
         fillColor: Colors.grey.shade50,
@@ -177,17 +228,19 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
   }
 
   Widget _buildOperatorCard(String label, String op, TextEditingController ctrl, Function(String?) onCh) {
+    bool isOrange = op.contains('Orange');
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.grey.shade50, 
         borderRadius: BorderRadius.circular(15), 
-        border: Border.all(color: Colors.grey.shade300),
+        // Correction withOpacity -> withValues
+        border: Border.all(color: isOrange ? orangeColor.withValues(alpha: 0.5) : Colors.blue.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
           const SizedBox(height: 5),
           Row(
             children: [
@@ -211,7 +264,6 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                   decoration: const InputDecoration(
                     hintText: "6XX XXX XXX", 
                     border: InputBorder.none,
-                    icon: Icon(Icons.phone_android, size: 20),
                   )
                 ),
               ),

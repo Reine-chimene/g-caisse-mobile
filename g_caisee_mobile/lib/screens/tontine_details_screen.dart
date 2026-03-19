@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
 import '../services/api_service.dart';
-import 'chat_screen.dart'; 
+import 'auction_screen.dart';
 
 class TontineDetailsScreen extends StatefulWidget {
-  final Map tontine; 
+  final Map tontine;
   final int userId;
-  final Map<String, dynamic> userData; 
+  final Map<String, dynamic> userData;
 
   const TontineDetailsScreen({
-    super.key, 
-    required this.tontine, 
-    required this.userId, 
-    required this.userData
+    super.key,
+    required this.tontine,
+    required this.userId,
+    required this.userData,
   });
 
   @override
@@ -20,16 +19,18 @@ class TontineDetailsScreen extends StatefulWidget {
 }
 
 class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
-  final Color primaryColor = const Color(0xFFD4AF37);
-  final Color backgroundColor = const Color(0xFFF5F6F8);
-  final Color textColor = const Color(0xFF1A1A1A);
+  final Color primaryColor = const Color(0xFFD4AF37); 
+  final Color darkCardColor = const Color(0xFF1A1A2E);
 
   List<dynamic> members = [];
+  Map<String, dynamic>? currentWinner; // Pour stocker le bénéficiaire du tour
   bool isLoading = true;
-  double userBalance = 0.0;
+  bool isProcessingPayment = false;
   
-  double fundBalance = 0.0; 
-  double socialBalance = 0.0; 
+  // États pour les fonds
+  double userBalance = 0.0;
+  double socialFund = 0.0;
+  double latePenalty = 500.0; // Exemple : 500 F de amende pour retard
 
   @override
   void initState() {
@@ -41,15 +42,19 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     if (!mounted) return;
     setState(() => isLoading = true);
     try {
-      final membersData = await ApiService.getTontineMembers(widget.tontine['id']);
-      final balance = await ApiService.getUserBalance(widget.userId);
-      final sFund = await ApiService.getSocialFund(); 
-      
+      final results = await Future.wait([
+        ApiService.getTontineMembers(widget.tontine['id']),
+        ApiService.getUserBalance(widget.userId),
+        ApiService.getSocialFund(),
+        ApiService.getCurrentWinner(widget.tontine['id']), // Nouvelle méthode API
+      ]);
+
       if (mounted) {
         setState(() {
-          members = membersData;
-          userBalance = balance;
-          socialBalance = sFund;
+          members = results[0] as List<dynamic>; 
+          userBalance = (results[1] as num).toDouble();
+          socialFund = (results[2] as num).toDouble();
+          currentWinner = results[3] as Map<String, dynamic>?;
           isLoading = false;
         });
       }
@@ -58,84 +63,142 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     }
   }
 
-  Future<void> _handleCotisation() async {
-    double amountToPay = double.tryParse(widget.tontine['amount_to_pay']?.toString() ?? "0") ?? 0.0;
+  // --- LOGIQUE DE PAIEMENT ---
+  Future<void> _handlePayment({bool isLate = false}) async {
+    double baseAmount = double.tryParse(widget.tontine['amount_to_pay']?.toString() ?? "0") ?? 0.0;
+    double totalToPay = isLate ? (baseAmount + latePenalty) : baseAmount;
 
-    if (userBalance < amountToPay) {
-      _showError("Solde insuffisant. Rechargez votre compte.");
+    if (userBalance < totalToPay) {
+      _showSnackBar("Solde insuffisant ($userBalance F).", Colors.red);
       return;
     }
 
+    setState(() => isProcessingPayment = true);
     try {
-      await ApiService.depositMoney(widget.userId, amountToPay); 
-      _showSuccess("Cotisation de ${amountToPay.toStringAsFixed(0)} F validée !");
-      _refreshData(); 
+      // ✅ Correction de l'erreur "undefined_method" en attendant la MAJ de ApiService
+      await ApiService.processTontinePayment(
+        userId: widget.userId, 
+        tontineId: widget.tontine['id'], 
+        amount: totalToPay,
+        isLate: isLate // On signale si c'est un retard pour le fond social
+      );
+      
+      _showSnackBar(isLate ? "Cotisation + Amende payées !" : "Cotisation validée !", Colors.green);
+      _refreshData();
     } catch (e) {
-      _showError("Erreur lors du paiement");
+      _showSnackBar("Erreur : $e", Colors.red);
+    } finally {
+      if (mounted) setState(() => isProcessingPayment = false);
     }
   }
-
-  void _showError(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
-  void _showSuccess(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.green));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: const Color(0xFFF5F6F8),
       appBar: AppBar(
-        title: Text(widget.tontine['name'] ?? "Détails", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: const Text("G-CAISSE DÉTAILS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
-        iconTheme: IconThemeData(color: textColor),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: Colors.black,
       ),
-      
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF25D366),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(
-          builder: (c) => ChatScreen(
-            tontineId: widget.tontine['id'], 
-            tontineName: widget.tontine['name'] ?? "Discussion",
-            userData: widget.userData, 
-          )
-        )),
-        icon: const Icon(Icons.chat, color: Colors.white),
-        label: const Text("DISCUSSION", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
-
       body: RefreshIndicator(
         onRefresh: _refreshData,
-        color: primaryColor,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              _buildInfoCard(),
-              
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SizedBox(
-                  width: double.infinity, height: 55, 
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
-                    ),
-                    onPressed: () => _showCotisationConfirm(),
-                    icon: const Icon(Icons.account_balance_wallet, color: Colors.white),
-                    label: const Text("PAYER MA COTISATION", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 25),
+              _buildWinnerBanner(), // Le bénéficiaire du tour
+              _buildMainCard(),
+              _buildPaymentActions(),
+              const SizedBox(height: 20),
               _buildQuickActions(),
-              const SizedBox(height: 25),
+              const SizedBox(height: 20),
               _buildMembersSection(),
-              const SizedBox(height: 100), 
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // --- WIDGET : LE BÉNÉFICIAIRE DU TOUR ---
+  Widget _buildWinnerBanner() {
+    if (currentWinner == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [primaryColor, const Color(0xFFB8860B)]),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.stars, color: Colors.orange)),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("BÉNÉFICIAIRE DU TOUR", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                Text(currentWinner!['fullname'] ?? "En attente...", style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                Text("Mode de retrait : ${currentWinner!['payout_method'] ?? 'Compte G-Caisse'}", 
+                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: darkCardColor, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _statTile("COTISATION", "${widget.tontine['amount_to_pay']} F"),
+              _statTile("FOND SOCIAL", "$socialFund F"),
+            ],
+          ),
+          const Divider(color: Colors.white10, height: 30),
+          Text("GAGNOTTE FINALE", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+          Text("${(double.parse(widget.tontine['amount_to_pay'].toString()) * members.length).toStringAsFixed(0)} FCFA",
+            style: TextStyle(color: primaryColor, fontSize: 26, fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentActions() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              onPressed: isProcessingPayment ? null : () => _confirmAction("Payer ma cotisation ?", () => _handlePayment()),
+              child: const Text("PAYER MAINTENANT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: () => _confirmAction("Payer avec amende de retard ($latePenalty F) ?", () => _handlePayment(isLate: true)),
+            icon: const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 18),
+            label: const Text("Payer en retard (+ Amende)", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
@@ -144,236 +207,105 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _actionBtn(Icons.favorite, "Social", Colors.pink, _showSocialDialog),
-        _actionBtn(Icons.gavel_rounded, "Enchères", Colors.orange, _showEnchereDialog),
-        _actionBtn(Icons.account_balance, "Fond", Colors.blue, _showFondDialog),
+        _actionIcon(Icons.gavel, "Enchères", Colors.orange, () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => AuctionScreen(tontineId: widget.tontine['id'])));
+        }),
+        _actionIcon(Icons.account_balance_wallet, "Retrait", Colors.blue, _showPayoutMethodDialog),
+        _actionIcon(Icons. help_outline, "Règles", Colors.grey, () {}),
       ],
     );
   }
 
-  Widget _actionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 26),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
+  // --- DIALOGUE : MODE DE RETRAIT ---
+  void _showPayoutMethodDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(25),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("MODE DE RÉCEPTION DES FONDS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 20),
+            _payoutOption("Portefeuille G-Caisse", Icons.account_balance_wallet, Colors.blue),
+            _payoutOption("Orange Money", Icons.phone_android, Colors.orange),
+            _payoutOption("MTN MoMo", Icons.vibration, Colors.yellow.shade700),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _payoutOption(String title, IconData icon, Color color) {
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(title),
+      trailing: const Icon(Icons.check_circle_outline),
+      onTap: () {
+        Navigator.pop(context);
+        _showSnackBar("Mode de retrait mis à jour : $title", Colors.green);
+      },
     );
   }
 
   Widget _buildMembersSection() {
     return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
-      ),
       padding: const EdgeInsets.all(25),
+      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("MEMBRES (${members.length})", style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.grey)),
-              TextButton.icon(
-                onPressed: _pickContact, 
-                icon: Icon(Icons.add, color: primaryColor),
-                label: Text("Inviter", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-          const SizedBox(height: 10),
-          isLoading 
-            ? Center(child: CircularProgressIndicator(color: primaryColor))
-            : ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: members.length,
-                itemBuilder: (context, i) => _buildMemberTile(members[i]),
-              ),
+          Text("MEMBRES DU GROUPE (${members.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
+          if (isLoading) const Center(child: CircularProgressIndicator())
+          else ...members.map((m) => ListTile(
+            leading: CircleAvatar(backgroundColor: primaryColor.withValues(alpha: 0.1), child: Text(m['fullname']?[0] ?? "")),
+            title: Text(m['fullname'] ?? "Anonyme"),
+            subtitle: Text(m['phone'] ?? ""),
+            trailing: const Icon(Icons.chevron_right, size: 16),
+          )),
         ],
       ),
     );
   }
 
-  Widget _buildMemberTile(dynamic m) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: primaryColor.withOpacity(0.1),
-        child: Text(m['fullname']?[0].toUpperCase() ?? "?", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-      ),
-      title: Text(m['fullname'] ?? "Utilisateur", style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(m['phone'] ?? ""),
-      trailing: const Icon(Icons.check_circle, color: Colors.green, size: 20),
-    );
-  }
-
-  Widget _buildInfoCard() {
-    double amountPerMember = double.tryParse(widget.tontine['amount_to_pay']?.toString() ?? "0") ?? 0.0;
-    
-    return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(25),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _infoDetail("Cotisation", "${widget.tontine['amount_to_pay']} F"),
-              _infoDetail("Fréquence", widget.tontine['frequency'] ?? "N/A"),
-            ],
-          ),
-          const Divider(color: Colors.white10, height: 30),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Cagnotte Totale", style: TextStyle(color: Colors.white70)),
-              Text("${(amountPerMember * members.length).toStringAsFixed(0)} FCFA", 
-                  style: TextStyle(color: primaryColor, fontSize: 20, fontWeight: FontWeight.bold)),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _infoDetail(String t, String v) {
+  Widget _statTile(String t, String v) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(t, style: const TextStyle(color: Colors.white60, fontSize: 12)),
+        Text(t, style: const TextStyle(color: Colors.white60, fontSize: 10)),
         Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ],
     );
   }
 
-  void _showCotisationConfirm() {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Confirmer la cotisation"),
-        content: Text("Le montant de ${widget.tontine['amount_to_pay']} F sera débité de votre solde G-Caisse."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-            onPressed: () {
-              Navigator.pop(c);
-              _handleCotisation();
-            }, 
-            child: const Text("Confirmer le paiement")
-          )
+  Widget _actionIcon(IconData i, String l, Color c, VoidCallback t) {
+    return InkWell(
+      onTap: t,
+      child: Column(
+        children: [
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: c.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(i, color: c)),
+          const SizedBox(height: 5),
+          Text(l, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  // --- ACTIONS RÉELLES ---
-
-  void _showSocialDialog() {
-    final TextEditingController amountController = TextEditingController();
+  void _confirmAction(String m, VoidCallback onConfirm) {
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text("Caisse Sociale ❤️"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Faites un don pour soutenir les membres en difficulté."),
-            const SizedBox(height: 15),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Montant (FCFA)", border: OutlineInputBorder()),
-            ),
-          ],
-        ),
+        title: const Text("Confirmation"),
+        content: Text(m),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink),
-            onPressed: () async {
-              double amt = double.tryParse(amountController.text) ?? 0;
-              if (amt > 0) {
-                try {
-                  await ApiService.makeDonation(widget.tontine['id'], amt);
-                  Navigator.pop(c);
-                  _showSuccess("Merci pour votre don !");
-                  _refreshData();
-                } catch (e) { _showError("Échec du don"); }
-              }
-            },
-            child: const Text("Faire un don"),
-          )
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("NON")),
+          ElevatedButton(onPressed: () { Navigator.pop(c); onConfirm(); }, child: const Text("OUI")),
         ],
       ),
     );
   }
 
-  void _showFondDialog() {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Fond de Groupe 🏦"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.account_balance, color: Colors.blue),
-              title: const Text("Solde total du fond"),
-              subtitle: Text("${socialBalance.toStringAsFixed(0)} FCFA", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            const Text("Ce fond sert de garantie pour les emprunts d'urgence."),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Fermer")),
-        ],
-      ),
-    );
-  }
-
-  void _showEnchereDialog() {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Enchères de Place 🔨"),
-        content: const Text("Misez pour passer prioritaire lors du tirage de ce mois."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () {
-               Navigator.pop(c);
-               _showSuccess("Votre mise a été enregistrée.");
-            },
-            child: const Text("Miser 1000 F"),
-          )
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pickContact() async {
-    if (await FlutterContacts.requestPermission()) {
-       Contact? contact = await FlutterContacts.openExternalPick();
-       if (contact != null && contact.phones.isNotEmpty) {
-          _showSuccess("Contact sélectionné : ${contact.displayName}");
-       }
-    }
-  }
+  void _showSnackBar(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
 }

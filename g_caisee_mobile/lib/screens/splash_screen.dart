@@ -12,17 +12,21 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
+  Timer? _timer; // ✅ Variable pour le timer
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2));
+    _controller = AnimationController(
+      vsync: this, 
+      duration: const Duration(seconds: 2)
+    );
+    
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
-
     _controller.forward();
 
     // Redirection automatique après 3 secondes
-    Timer(const Duration(seconds: 3), () {
+    _timer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -34,6 +38,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _timer?.cancel(); // ✅ On annule le timer pour éviter les fuites de mémoire
     _controller.dispose();
     super.dispose();
   }
@@ -41,14 +46,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // ✅ Fond blanc épuré
+      backgroundColor: Colors.white,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Ton Logo avec une légère ombre pour le faire ressortir sur le blanc
+              // Logo circulaire avec ombre légère
               Container(
                 width: 160,
                 height: 160,
@@ -56,7 +61,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      // ✅ Utilisation de withValues pour être à jour
+                      color: Colors.black.withValues(alpha: 0.05), 
                       blurRadius: 20,
                       spreadRadius: 5,
                     )
@@ -69,7 +75,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: 30),
               
-              // Nom de l'application
               const Text(
                 "G-CAISE",
                 style: TextStyle(
@@ -81,11 +86,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: 10),
               
-              // Slogan
               Text(
                 "La Tontine Digitale Éthique", 
                 style: TextStyle(
-                  color: Colors.grey.shade600, // Gris foncé pour la lisibilité
+                  color: Colors.grey.shade600,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 1.2,
@@ -93,7 +97,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: 60),
               
-              // Indicateur de chargement
               const CircularProgressIndicator(
                 color: Color(0xFFD4AF37), 
                 strokeWidth: 3

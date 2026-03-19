@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_volume_controller
   geolocator_windows
   lengopay_flutter
+  local_auth_windows
   permission_handler_windows
   printing
   screen_brightness_windows

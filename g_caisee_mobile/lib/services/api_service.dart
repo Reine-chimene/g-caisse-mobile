@@ -51,6 +51,13 @@ class ApiService {
     return 100;
   }
 
+  // ✅ CORRIGÉ : Accepte maintenant 2 arguments pour éviter l'erreur dans om_momo_screen.dart
+  static Future<String> getRecipientName(String phone, String operator) async {
+    final res = await http.get(Uri.parse('$baseUrl/users/check?phone=$phone&operator=$operator'));
+    if (res.statusCode == 200) return jsonDecode(res.body)['fullname'];
+    return "Destinataire inconnu";
+  }
+
   // ==========================================
   // 2. FINANCE (NOTCH PAY, TRANSFERTS, DEPÔTS)
   // ==========================================
@@ -67,7 +74,7 @@ class ApiService {
       }),
     );
     if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception(jsonDecode(response.body)['message'] ?? 'Erreur NotchPay');
+    throw Exception(response.statusCode == 400 ? jsonDecode(response.body)['message'] : 'Erreur NotchPay');
   }
 
   static Future<void> transferMoney(int senderId, String receiverPhone, double amount) async {
@@ -83,7 +90,7 @@ class ApiService {
     required int senderId,
     required String receiverPhone,
     required double amount,
-    required String operator, // Paramètre attendu par om_momo_screen.dart
+    required String operator, 
   }) async {
     final res = await http.post(
       Uri.parse('$baseUrl/transfer'),
@@ -144,6 +151,20 @@ class ApiService {
   static Future<List<dynamic>> getTontines(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  static Future<void> processTontinePayment({required int userId, required int tontineId, required double amount, bool isLate = false}) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/payments/tontine'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"user_id": userId, "tontine_id": tontineId, "amount": amount, "is_late": isLate}),
+    );
+    if (res.statusCode != 200) throw Exception("Échec du paiement tontine");
+  }
+
+  static Future<Map<String, dynamic>?> getCurrentWinner(int tontineId) async {
+    final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/winner'));
+    return res.statusCode == 200 ? jsonDecode(res.body) : null;
   }
 
   static Future<List<dynamic>> getTontineMembers(int tontineId) async {
