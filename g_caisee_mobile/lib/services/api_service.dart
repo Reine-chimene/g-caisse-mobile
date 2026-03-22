@@ -74,6 +74,7 @@ class ApiService {
   // ==========================================
 
   static Future<Map<String, dynamic>> initiatePayment(String phone, double amount, {String? name, String? email}) async {
+    // Utilisation de l'ID utilisateur dans la référence pour faciliter le dépôt côté backend
     final response = await http.post(
       Uri.parse('$baseUrl/pay'), 
       headers: {"Content-Type": "application/json"},
@@ -86,6 +87,34 @@ class ApiService {
     );
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception(response.statusCode == 400 ? jsonDecode(response.body)['message'] : 'Erreur NotchPay');
+  }
+
+  // --- NOUVELLE FONCTION AJOUTÉE POUR LE RETRAIT (PAYOUT) ---
+  static Future<Map<String, dynamic>> processPayout({
+    required int userId,
+    required double amount,
+    required String phone,
+    required String name,
+    String? channel,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/payout'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "user_id": userId,
+        "amount": amount,
+        "phone": phone,
+        "name": name,
+        "channel": channel ?? "cm.mobile"
+      }),
+    );
+
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    } else {
+      final error = jsonDecode(res.body);
+      throw Exception(error['message'] ?? "Erreur lors du retrait");
+    }
   }
 
   static Future<void> transferMoney(int senderId, String receiverPhone, double amount) async {
@@ -141,14 +170,13 @@ class ApiService {
   // 3. SERVICES (AIRTIME & FACTURES)
   // ==========================================
 
-  // Modifié pour supporter le crédit ET les forfaits Data
   static Future<Map<String, dynamic>> buyAirtimeOrData({
     required int userId, 
     required String phoneNumber, 
     required double amount, 
     required String operator,
     required String type, // "Crédit" ou "Data"
-    String? plan,        // "Jour", "Semaine", "Mois"
+    String? plan,         // "Jour", "Semaine", "Mois"
   }) async {
     final res = await http.post(
       Uri.parse('$baseUrl/services/airtime'), 
@@ -292,6 +320,7 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getTontineMembersLocations(int tontineId) async {
+    // Correction ici : On retire le ".getUri" en trop
     final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/locations'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
