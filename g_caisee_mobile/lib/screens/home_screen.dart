@@ -126,7 +126,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openPaymentDialog("MTN")),
                 _logoBtn("Carte", '', () {
                   Navigator.pop(context);
-                  // Assurez-vous que CardPaymentScreen est importé ou défini
                 }, icon: Icons.credit_card),
               ],
             ),
@@ -160,7 +159,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
               try {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Génération du lien NotchPay...")));
                 
+                // CORRECTION ICI : Ajout de l'ID utilisateur en premier argument
                 final res = await ApiService.initiatePayment(
+                  widget.userData['id'], 
                   widget.userData['phone'], 
                   double.parse(amount),
                   name: widget.userData['fullname'],
@@ -189,7 +190,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // --- LOGIQUE DE RETRAIT COMPLÉTÉE ICI ---
   void _showWithdrawDialog() {
     final TextEditingController ctrl = TextEditingController();
     showDialog(
@@ -225,7 +225,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
               }
 
               Navigator.pop(c);
-              // Affichage du chargement
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Traitement du retrait en cours...")));
 
               try {
@@ -240,7 +239,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(result['message'] ?? "Demande de retrait réussie !"), backgroundColor: Colors.green)
                   );
-                  _loadData(); // Actualiser le solde après le retrait
+                  _loadData(); 
                 }
               } catch (e) {
                 if (mounted) {
@@ -312,9 +311,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       children: [
         _actionItem(Icons.add_circle, "Dépôt", _showDepositSelector),
         _actionItem(Icons.remove_circle, "Retrait", _showWithdrawDialog), 
-        _actionItem(Icons.history, "Historique", () {
-           // Assurez-vous que HistoryScreen est importé
-        }),
+        _actionItem(Icons.history, "Historique", () {}),
       ],
     );
   }
@@ -324,7 +321,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       onTap: onTap,
       child: Column(
         children: [
-          CircleAvatar(backgroundColor: orangeColor.withValues(alpha: 0.1), child: Icon(icon, color: orangeColor)),
+          CircleAvatar(backgroundColor: orangeColor.withOpacity(0.1), child: Icon(icon, color: orangeColor)),
           const SizedBox(height: 5),
           Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ],
@@ -381,7 +378,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 30), Text(label, style: const TextStyle(fontWeight: FontWeight.bold))]),
       ),
     );

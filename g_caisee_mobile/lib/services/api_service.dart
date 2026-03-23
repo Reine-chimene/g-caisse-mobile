@@ -15,12 +15,12 @@ class ApiService {
         Uri.parse('$baseUrl/login'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"phone": phone, "pincode": pin}),
-      ).timeout(const Duration(seconds: 45)); // Correction : Attendre le réveil de Render
+      ).timeout(const Duration(seconds: 45)); 
 
       final data = jsonDecode(res.body);
 
       if (res.statusCode == 200) {
-        return data; // Retourne l'objet user pour la navigation
+        return data; 
       } else {
         throw Exception(data['message'] ?? "Identifiants incorrects");
       }
@@ -73,23 +73,21 @@ class ApiService {
   // 2. FINANCE (NOTCH PAY, TRANSFERTS, DEPÔTS)
   // ==========================================
 
-  static Future<Map<String, dynamic>> initiatePayment(String phone, double amount, {String? name, String? email}) async {
-    // Utilisation de l'ID utilisateur dans la référence pour faciliter le dépôt côté backend
+  static Future<Map<String, dynamic>> initiatePayment(int userId, String phone, double amount, {String? name}) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/pay'), 
+      Uri.parse('$baseUrl/deposit'), 
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
+        'user_id': userId, 
         'phone': phone,
         'amount': amount,
         'name': name ?? "Membre",
-        'email': email ?? "contact@g-caise.cm"
       }),
     );
     if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception(response.statusCode == 400 ? jsonDecode(response.body)['message'] : 'Erreur NotchPay');
+    throw Exception('Erreur lors de l\'initialisation du dépôt');
   }
 
-  // --- NOUVELLE FONCTION AJOUTÉE POUR LE RETRAIT (PAYOUT) ---
   static Future<Map<String, dynamic>> processPayout({
     required int userId,
     required double amount,
@@ -175,8 +173,8 @@ class ApiService {
     required String phoneNumber, 
     required double amount, 
     required String operator,
-    required String type, // "Crédit" ou "Data"
-    String? plan,         // "Jour", "Semaine", "Mois"
+    required String type, 
+    String? plan,         
   }) async {
     final res = await http.post(
       Uri.parse('$baseUrl/services/airtime'), 
@@ -186,8 +184,8 @@ class ApiService {
         "receiver_phone": phoneNumber, 
         "amount": amount, 
         "operator": operator,
-        "service_type": type, // Précise si c'est du crédit ou internet
-        "plan_validity": plan // Optionnel, envoyé seulement si c'est Data
+        "service_type": type, 
+        "plan_validity": plan 
       }),
     );
     
@@ -212,7 +210,13 @@ class ApiService {
 
   static Future<List<dynamic>> getTontines(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
-    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+    
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    } else {
+      print("Erreur serveur tontines: ${res.statusCode}");
+      return [];
+    }
   }
 
   static Future<void> processTontinePayment({required int userId, required int tontineId, required double amount, bool isLate = false}) async {
@@ -320,7 +324,6 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getTontineMembersLocations(int tontineId) async {
-    // Correction ici : On retire le ".getUri" en trop
     final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/locations'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
