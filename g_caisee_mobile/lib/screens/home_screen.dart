@@ -8,6 +8,7 @@ import 'create_tontine_screen.dart';
 import 'profile_screen.dart';
 import 'om_momo_screen.dart';
 import 'airtime_screen.dart';
+import 'history_screen.dart';
 
 // =========================================================
 // 1. WRAPPER PRINCIPAL
@@ -27,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Widget> _getPages() {
     return [
       HomeDashboard(userData: widget.userData),
-      const Center(child: Text("Liste des Tontines (Bientôt disponible)")),
+      TontinesListScreen(userData: widget.userData),
       SavingScreen(userData: widget.userData),
       ProfileScreen(userData: widget.userData),
     ];
@@ -50,6 +51,65 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.savings), label: "Épargne"),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
         ],
+      ),
+    );
+  }
+}
+
+// =========================================================
+// 3. ECRAN LISTE TONTINES (NOUVEAU)
+// =========================================================
+class TontinesListScreen extends StatefulWidget {
+  final Map<String, dynamic> userData;
+  const TontinesListScreen({super.key, required this.userData});
+
+  @override
+  State<TontinesListScreen> createState() => _TontinesListScreenState();
+}
+
+class _TontinesListScreenState extends State<TontinesListScreen> {
+  List<dynamic> tontines = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    try {
+      final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
+      final data = await ApiService.getTontines(myId);
+      if (mounted) {
+        setState(() {
+          tontines = data;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Mes Tontines"), automaticallyImplyLeading: false, centerTitle: true),
+      body: RefreshIndicator(
+        onRefresh: _fetchData,
+        child: isLoading 
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF7900))) 
+          : tontines.isEmpty 
+            ? ListView(children: const [SizedBox(height: 200), Center(child: Text("Aucune tontine trouvée"))])
+            : ListView.builder(
+                itemCount: tontines.length,
+                itemBuilder: (c, i) => ListTile(
+                  leading: const CircleAvatar(backgroundColor: Color(0xFFFF7900), child: Icon(Icons.groups, color: Colors.white)),
+                  title: Text(tontines[i]['name'] ?? "Groupe"),
+                  subtitle: Text("${tontines[i]['amount']} FCFA - ${tontines[i]['frequency'] ?? ''}"),
+                ),
+              ),
       ),
     );
   }
@@ -104,60 +164,75 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  // --- LOGIQUE NOTCH PAY ---
-  void _openPaymentDialog(String operator) {
+  // --- LOGIQUE TRANSACTION (DÉPÔT & RETRAIT) ---
+  void _openTransactionDialog(bool isDeposit, String operator) {
     Navigator.pop(context);
-    final TextEditingController ctrl = TextEditingController();
+    // Pré-remplit avec le numéro du profil, mais modifiable
+    final TextEditingController phoneCtrl = TextEditingController(text: widget.userData['phone']);
+    final TextEditingController amountCtrl = TextEditingController();
+    
     showDialog(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text("Dépôt $operator"),
-        content: TextField(
-          controller: ctrl, 
-          keyboardType: TextInputType.number, 
-          decoration: const InputDecoration(labelText: "Montant FCFA", hintText: "Ex: 1000")
+        title: Text("${isDeposit ? 'Dépôt' : 'Retrait'} $operator"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 1. On demande d'abord le numéro
+            TextField(
+              controller: phoneCtrl, 
+              keyboardType: TextInputType.phone, 
+              decoration: const InputDecoration(labelText: "Numéro de téléphone", hintText: "6XXXXXXXX", prefixIcon: Icon(Icons.phone))
+            ),
+            const SizedBox(height: 15),
+            // 2. Ensuite le montant
+            TextField(
+              controller: amountCtrl, 
+              keyboardType: TextInputType.number, 
+              decoration: const InputDecoration(labelText: "Montant FCFA", hintText: "Ex: 1000", prefixIcon: Icon(Icons.money))
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: const Text("Annuler")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: orangeColor),
             onPressed: () async {
-              if (ctrl.text.isEmpty) return;
-              String amount = ctrl.text;
+              if (phoneCtrl.text.isEmpty || amountCtrl.text.isEmpty) return;
               Navigator.pop(c);
-              
-              try {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Génération du lien de paiement...")));
-                
-                final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
-                final res = await ApiService.initiatePayment(
-                  myId, 
-                  widget.userData['phone'], 
-                  double.parse(amount),
-                  name: widget.userData['fullname'],
-                );
-
-                if (res['success'] == true && res['payment_url'] != null) {
-                  final Uri url = Uri.parse(res['payment_url']);
-                  if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-                    throw Exception("Lien impossible à ouvrir");
-                  }
-                } else {
-                  throw Exception(res['message'] ?? "Erreur de service");
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.red)
-                  );
-                }
-              }
+              _processTransaction(isDeposit, phoneCtrl.text.trim(), double.tryParse(amountCtrl.text) ?? 0);
             },
             child: const Text("Valider", style: TextStyle(color: Colors.white)),
           )
         ],
       ),
     );
+  }
+
+  Future<void> _processTransaction(bool isDeposit, String phone, double amount) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isDeposit ? "Initialisation du dépôt..." : "Traitement du retrait...")));
+      
+      final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
+
+      if (isDeposit) {
+        final res = await ApiService.initiatePayment(myId, phone, amount, name: widget.userData['fullname']);
+        if (res['success'] == true && res['payment_url'] != null) {
+          final Uri url = Uri.parse(res['payment_url']);
+          if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+            throw Exception("Lien impossible à ouvrir");
+          }
+        } else {
+          throw Exception(res['message'] ?? "Erreur d'initialisation");
+        }
+      } else {
+        // Logique de Retrait
+        await ApiService.processPayout(userId: myId, amount: amount, phone: phone, name: widget.userData['fullname']);
+        if (mounted) _showSuccessDialog("Retrait initié avec succès sur le $phone");
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: Colors.red));
+    }
   }
 
   @override
@@ -214,14 +289,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _actionItem(Icons.add_circle, "Dépôt", _showDepositSelector),
-        _actionItem(Icons.remove_circle, "Retrait", () => {}), 
-        _actionItem(Icons.history, "Historique", () {}),
+        _actionItem(Icons.add_circle, "Dépôt", () => _showOperatorSelector(true)),
+        _actionItem(Icons.remove_circle, "Retrait", () => _showOperatorSelector(false)), 
+        _actionItem(Icons.history, "Historique", () {
+          Navigator.push(context, MaterialPageRoute(builder: (c) => HistoryScreen(userId: int.tryParse(widget.userData['id'].toString()) ?? 0)));
+        }),
       ],
     );
   }
 
-  void _showDepositSelector() {
+  void _showOperatorSelector(bool isDeposit) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -230,14 +307,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Mode de dépôt", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text("Mode de ${isDeposit ? 'dépôt' : 'retrait'}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 25),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openPaymentDialog("Orange")),
-                _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openPaymentDialog("MTN")),
-                _logoBtn("Carte", '', () => Navigator.pop(context), icon: Icons.credit_card),
+                _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openTransactionDialog(isDeposit, "Orange")),
+                _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openTransactionDialog(isDeposit, "MTN")),
+                if (isDeposit) // La carte n'est souvent dispo que pour le dépôt
+                  _logoBtn("Carte", '', () => Navigator.pop(context), icon: Icons.credit_card),
               ],
             ),
           ],
@@ -327,6 +405,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
         icon != null ? Icon(icon, size: 50, color: Colors.blueGrey) : (path.isNotEmpty ? Image.asset(path, width: 50, height: 50, errorBuilder: (c, e, s) => const Icon(Icons.payment, size: 50)) : const Icon(Icons.payment, size: 50)),
         Text(name, style: const TextStyle(fontSize: 12)),
       ]),
+    );
+  }
+
+  void _showSuccessDialog(String msg) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Icon(Icons.check_circle, color: Colors.green, size: 50),
+        content: Text(msg, textAlign: TextAlign.center),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))
+        ],
+      )
     );
   }
 }

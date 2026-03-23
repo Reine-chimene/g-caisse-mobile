@@ -81,6 +81,7 @@ class ApiService {
         'user_id': userId, 
         'phone': phone,
         'amount': amount,
+        'email': "user$userId@gcaisse.com", // Email requis par Notch Pay (généré automatiquement)
         'name': name ?? "Membre G-Caisse", // Aligné avec le backend
       }),
     );
@@ -148,7 +149,12 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/deposit'),
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId, "amount": amount}),
+      body: jsonEncode({
+        "user_id": userId, 
+        "amount": amount,
+        "email": "user$userId@gcaisse.com", // Ajout pour cohérence Notch Pay
+        "name": "Membre G-Caisse"           // Ajout pour cohérence Notch Pay
+      }),
     );
     if (res.statusCode != 200) throw Exception("Erreur dépôt");
   }
@@ -213,7 +219,11 @@ class ApiService {
     final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
     
     if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+      if (data is List) {
+        return data;
+      }
+      return [];
     } else {
       print("Erreur serveur tontines: ${res.statusCode}");
       return [];
@@ -246,7 +256,7 @@ class ApiService {
         "name": name, 
         "admin_id": adminId, 
         "frequency": freq, 
-        "amount": amount, 
+        "amount_to_pay": amount, // Correction appliquée selon votre note SQL
         "commission_rate": commission
       }),
     );
@@ -295,7 +305,12 @@ class ApiService {
 
   static Future<void> depositToSavings(int userId, double amount) async {
     await http.post(Uri.parse('$baseUrl/deposit'), headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId, "amount": amount}),
+      body: jsonEncode({
+        "user_id": userId, 
+        "amount": amount,
+        "email": "user$userId@gcaisse.com", // Ajout pour cohérence Notch Pay
+        "name": "Épargne G-Caisse"          // Ajout pour cohérence Notch Pay
+      }),
     );
   }
 
@@ -339,12 +354,5 @@ class ApiService {
   static Future<Map<String, dynamic>> getAdminStats() async {
     final res = await http.get(Uri.parse('$baseUrl/admin/stats'));
     return res.statusCode == 200 ? jsonDecode(res.body) : {"total_fees": 0, "total_volume": 0};
-  }
-
-  static Future<String> createStripePaymentIntent(int userId, double amount) async {
-    final res = await http.post(Uri.parse('$baseUrl/create-payment-intent'), headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId, "amount": (amount * 100).toInt(), "currency": "eur"}),
-    );
-    return res.statusCode == 200 ? jsonDecode(res.body)['clientSecret'] : throw Exception("Stripe Error");
   }
 }

@@ -23,11 +23,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _fetchTransactions() async {
     try {
       final data = await ApiService.getUserTransactions(widget.userId);
+      if (!mounted) return; // Sécurité : on vérifie si l'écran est toujours là
       setState(() {
         transactions = data;
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
