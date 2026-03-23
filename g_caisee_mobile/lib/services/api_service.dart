@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:async'; // Ajouté pour le Timeout
+import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -18,7 +18,6 @@ class ApiService {
       ).timeout(const Duration(seconds: 45)); 
 
       final data = jsonDecode(res.body);
-
       if (res.statusCode == 200) {
         return data; 
       } else {
@@ -52,7 +51,8 @@ class ApiService {
   static Future<double> getUserBalance(int userId) async {
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/balance'));
     if (res.statusCode == 200) {
-      return double.parse(jsonDecode(res.body)['balance'].toString());
+      // Correction : tryParse pour éviter les erreurs de format
+      return double.tryParse(jsonDecode(res.body)['balance'].toString()) ?? 0.0;
     }
     return 0.0;
   }
@@ -81,7 +81,7 @@ class ApiService {
         'user_id': userId, 
         'phone': phone,
         'amount': amount,
-        'name': name ?? "Membre",
+        'name': name ?? "Membre G-Caisse", // Aligné avec le backend
       }),
     );
     if (response.statusCode == 200) return jsonDecode(response.body);
@@ -174,7 +174,7 @@ class ApiService {
     required double amount, 
     required String operator,
     required String type, 
-    String? plan,         
+    String? plan,                
   }) async {
     final res = await http.post(
       Uri.parse('$baseUrl/services/airtime'), 
@@ -209,6 +209,7 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> getTontines(int userId) async {
+    // Correction : On ajoute le user_id en paramètre de requête pour le backend
     final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'));
     
     if (res.statusCode == 200) {
@@ -240,9 +241,16 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createTontine(String name, int adminId, String freq, double amount, double commission) async {
     final res = await http.post(Uri.parse('$baseUrl/tontines'), headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"name": name, "admin_id": adminId, "frequency": freq, "amount": amount, "commission_rate": commission}),
+      // Correction : amount_to_pay pour correspondre à ta table SQL
+      body: jsonEncode({
+        "name": name, 
+        "admin_id": adminId, 
+        "frequency": freq, 
+        "amount": amount, 
+        "commission_rate": commission
+      }),
     );
-    return res.statusCode == 201 ? jsonDecode(res.body) : throw Exception("Erreur");
+    return res.statusCode == 201 ? jsonDecode(res.body) : throw Exception("Erreur lors de la création");
   }
 
   static Future<List<dynamic>> getGroupMessages(int tontineId) async {
