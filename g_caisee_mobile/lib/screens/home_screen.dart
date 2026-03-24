@@ -108,6 +108,12 @@ class _TontinesListScreenState extends State<TontinesListScreen> {
                   leading: const CircleAvatar(backgroundColor: Color(0xFFFF7900), child: Icon(Icons.groups, color: Colors.white)),
                   title: Text(tontines[i]['name'] ?? "Groupe"),
                   subtitle: Text("${tontines[i]['amount']} FCFA - ${tontines[i]['frequency'] ?? ''}"),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (c) => TontineDetailScreen(tontine: tontines[i], userData: widget.userData)
+                    ));
+                  },
                 ),
               ),
       ),
@@ -340,11 +346,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.only(left: 20),
                 itemCount: mesTontines.length,
-                itemBuilder: (context, i) => Container(
-                  width: 140,
-                  margin: const EdgeInsets.only(right: 15),
-                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange.withOpacity(0.2))),
-                  child: Center(child: Text(mesTontines[i]['name'] ?? "Groupe", textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500))),
+                itemBuilder: (context, i) => GestureDetector(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailScreen(tontine: mesTontines[i], userData: widget.userData)));
+                  },
+                  child: Container(
+                    width: 140,
+                    margin: const EdgeInsets.only(right: 15),
+                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange.withOpacity(0.2))),
+                    child: Center(child: Text(mesTontines[i]['name'] ?? "Groupe", textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500))),
+                  ),
                 ),
               ),
             ),
@@ -418,6 +429,37 @@ class _HomeDashboardState extends State<HomeDashboard> {
           TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))
         ],
       )
+    );
+  }
+}
+
+// =========================================================
+// 4. ECRAN DETAIL TONTINE (Navigation)
+// =========================================================
+class TontineDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> tontine;
+  final Map<String, dynamic> userData;
+  const TontineDetailScreen({super.key, required this.tontine, required this.userData});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tontine['name'] ?? "Détails Tontine")),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.groups, size: 80, color: Color(0xFFFF7900)),
+            const SizedBox(height: 20),
+            Text(tontine['name'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text("Montant : ${tontine['amount']} FCFA", style: const TextStyle(fontSize: 18)),
+            Text("Fréquence : ${tontine['frequency']}", style: const TextStyle(fontSize: 16, color: Colors.grey)),
+            const SizedBox(height: 30),
+            const Text("Espace de discussion et membres à venir...", style: TextStyle(fontStyle: FontStyle.italic)),
+          ],
+        ),
+      ),
     );
   }
 }

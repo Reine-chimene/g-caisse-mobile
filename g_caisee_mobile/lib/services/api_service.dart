@@ -85,8 +85,14 @@ class ApiService {
         'name': name ?? "Membre G-Caisse", // Aligné avec le backend
       }),
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception('Erreur lors de l\'initialisation du dépôt');
+    final body = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return body;
+    } else {
+      // On récupère le vrai message d'erreur du serveur s'il existe
+      String msg = body['error'] ?? body['message'] ?? 'Erreur lors de l\'initialisation du dépôt';
+      throw Exception(msg);
+    }
   }
 
   static Future<Map<String, dynamic>> processPayout({
