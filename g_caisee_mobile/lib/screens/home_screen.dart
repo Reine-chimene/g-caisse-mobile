@@ -9,6 +9,7 @@ import 'profile_screen.dart';
 import 'om_momo_screen.dart';
 import 'airtime_screen.dart';
 import 'history_screen.dart';
+import 'tontine_details_screen.dart';
 
 // =========================================================
 // 1. WRAPPER PRINCIPAL
@@ -110,9 +111,11 @@ class _TontinesListScreenState extends State<TontinesListScreen> {
                   subtitle: Text("${tontines[i]['amount']} FCFA - ${tontines[i]['frequency'] ?? ''}"),
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (c) => TontineDetailScreen(tontine: tontines[i], userData: widget.userData)
-                    ));
+                    Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailsScreen(
+                      tontine: tontines[i], 
+                      userData: widget.userData,
+                      userId: int.tryParse(widget.userData['id'].toString()) ?? 0,
+                    )));
                   },
                 ),
               ),
@@ -348,7 +351,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 itemCount: mesTontines.length,
                 itemBuilder: (context, i) => GestureDetector(
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailScreen(tontine: mesTontines[i], userData: widget.userData)));
+                    Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailsScreen(
+                      tontine: mesTontines[i],
+                      userData: widget.userData,
+                      userId: int.tryParse(widget.userData['id'].toString()) ?? 0,
+                    )));
                   },
                   child: Container(
                     width: 140,
@@ -429,37 +436,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
           TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))
         ],
       )
-    );
-  }
-}
-
-// =========================================================
-// 4. ECRAN DETAIL TONTINE (Navigation)
-// =========================================================
-class TontineDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> tontine;
-  final Map<String, dynamic> userData;
-  const TontineDetailScreen({super.key, required this.tontine, required this.userData});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tontine['name'] ?? "Détails Tontine")),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.groups, size: 80, color: Color(0xFFFF7900)),
-            const SizedBox(height: 20),
-            Text(tontine['name'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text("Montant : ${tontine['amount']} FCFA", style: const TextStyle(fontSize: 18)),
-            Text("Fréquence : ${tontine['frequency']}", style: const TextStyle(fontSize: 16, color: Colors.grey)),
-            const SizedBox(height: 30),
-            const Text("Espace de discussion et membres à venir...", style: TextStyle(fontStyle: FontStyle.italic)),
-          ],
-        ),
-      ),
     );
   }
 }
