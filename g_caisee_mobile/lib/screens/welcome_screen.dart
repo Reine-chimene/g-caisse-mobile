@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -9,35 +10,31 @@ class WelcomeScreen extends StatefulWidget {
   State<WelcomeScreen> createState() => _WelcomeScreenState();
 }
 
-class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProviderStateMixin {
-  final Color primaryColor = const Color(0xFFD4AF37); // Ton Or
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  Timer? _timer; // On stocke le timer pour pouvoir l'annuler
+class _WelcomeScreenState extends State<WelcomeScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double>   _fade;
+  late Animation<Offset>   _slide;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    
-    // Configuration de l'animation de fondu
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _controller.forward();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _fade  = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _ctrl.forward();
 
-    // Navigation après 3.5s
     _timer = Timer(const Duration(milliseconds: 3500), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          PageRouteBuilder( // Animation de transition douce vers le Login
-            pageBuilder: (context, anim, secondaryAnim) => const LoginScreen(),
-            transitionsBuilder: (context, anim, secondaryAnim, child) {
-              return FadeTransition(opacity: anim, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 800),
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const LoginScreen(),
+            transitionsBuilder: (_, anim, __, child) =>
+                FadeTransition(opacity: anim, child: child),
+            transitionDuration: const Duration(milliseconds: 600),
           ),
         );
       }
@@ -46,103 +43,171 @@ class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProvider
 
   @override
   void dispose() {
-    _timer?.cancel(); // Sécurité : on annule le timer
-    _controller.dispose(); // On libère la mémoire
+    _timer?.cancel();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: FadeTransition( // Tout l'écran apparaît en fondu
-          opacity: _fadeAnimation,
-          child: Padding(
-            padding: const EdgeInsets.all(30.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(),
-                
-                // LOGO avec ombre portée plus douce
-                Hero( // Hero pour une transition fluide si le logo est sur le login
-                  tag: 'logo',
-                  child: Container(
-                    height: 150,
-                    width: 150,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: primaryColor.withValues(alpha: 0.15), 
-                          blurRadius: 30, 
-                          spreadRadius: 10
-                        )
-                      ],
-                      image: const DecorationImage(
-                        image: AssetImage('assets/logo.jpeg'), 
-                        fit: BoxFit.cover
-                      ),
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(height: 30),
-                
-                Text(
-                  "G-CAISE",
-                  style: TextStyle(
-                    color: primaryColor, 
-                    fontSize: 40, 
-                    fontWeight: FontWeight.w900, 
-                    letterSpacing: 4
-                  ),
-                ),
-                
-                const SizedBox(height: 10),
-                
-                Text(
-                  "La tontine moderne,\nsécurisée et transparente.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey[600], 
-                    fontSize: 16, 
-                    height: 1.4, 
-                    fontWeight: FontWeight.w400
-                  ),
-                ),
-                
-                const Spacer(),
-                
-                // Barre de chargement plus stylisée
-                Column(
-                  children: [
-                    Text(
-                      "Initialisation sécurisée...", 
-                      style: TextStyle(
-                        color: Colors.grey[400], 
-                        fontSize: 13, 
-                        fontStyle: FontStyle.italic
-                      )
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: 180,
-                      child: LinearProgressIndicator(
-                        backgroundColor: Colors.grey[100],
-                        valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
-                        minHeight: 4,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 40),
-              ],
+      backgroundColor: AppTheme.dark,
+      body: Stack(
+        children: [
+          // Cercles décoratifs
+          Positioned(
+            top: -100,
+            left: -80,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primary.withValues(alpha: 0.06),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            bottom: -80,
+            right: -60,
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primary.withValues(alpha: 0.05),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: FadeTransition(
+              opacity: _fade,
+              child: SlideTransition(
+                position: _slide,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Column(
+                    children: [
+                      const Spacer(flex: 2),
+
+                      // Logo
+                      Hero(
+                        tag: 'gcaisse_logo',
+                        child: Container(
+                          width: 110,
+                          height: 110,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primary.withValues(alpha: 0.3),
+                                blurRadius: 30,
+                                spreadRadius: 5,
+                              ),
+                            ],
+                            image: const DecorationImage(
+                              image: AssetImage('assets/logo.jpeg'),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Nom
+                      const Text(
+                        'G-CAISSE',
+                        style: TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 42,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 6,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Tagline
+                      const Text(
+                        'La tontine digitale\néthique et sécurisée',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 17,
+                          height: 1.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+
+                      const Spacer(flex: 2),
+
+                      // Features
+                      _featureRow(Icons.groups_rounded, 'Tontines digitales sécurisées'),
+                      const SizedBox(height: 14),
+                      _featureRow(Icons.account_balance_wallet_rounded, 'Transferts Mobile Money'),
+                      const SizedBox(height: 14),
+                      _featureRow(Icons.shield_rounded, 'Finance islamique éthique'),
+
+                      const Spacer(flex: 1),
+
+                      // Barre de progression
+                      Column(
+                        children: [
+                          Text(
+                            'Initialisation sécurisée...',
+                            style: TextStyle(
+                              color: AppTheme.textMuted.withValues(alpha: 0.5),
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              backgroundColor: AppTheme.darkSurface,
+                              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primary),
+                              minHeight: 3,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _featureRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppTheme.primary, size: 18),
+        ),
+        const SizedBox(width: 14),
+        Text(
+          text,
+          style: const TextStyle(
+            color: AppTheme.textLight,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

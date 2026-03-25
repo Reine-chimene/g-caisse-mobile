@@ -1,15 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'login_screen.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:g_caisee_mobile/screens/login_screen.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
+import '../main.dart' show themeNotifier;
+import 'login_screen.dart';
+import 'forgot_pin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
-
   const ProfileScreen({super.key, this.userData});
 
   @override
@@ -17,171 +19,248 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final Color primaryColor = const Color(0xFFFF7900); // Orange G-CAISE
-  final Color backgroundColor = const Color(0xFFF5F6F8);
+  bool   _isDark             = false;
+  bool   _pushNotifications  = true;
+  double _balance            = 0.0;
+  int    _trustScore         = 0;
+  bool   _isLoading          = true;
+  File?  _imageFile;
 
-  bool isDarkMode = false;
-  bool pushNotifications = true;
-  double balance = 0.0;
-  int trustScore = 0;
-  bool isLoading = true;
-  File? _imageFile;
-
-  late String localFullname;
-  late String localPhone;
+  late String _fullname;
+  late String _phone;
 
   @override
   void initState() {
     super.initState();
-    localFullname = widget.userData?['fullname'] ?? "Membre G-CAISE";
-    localPhone = widget.userData?['phone'] ?? "+237 ---";
+    _fullname = widget.userData?['fullname'] ?? 'Membre G-Caisse';
+    _phone    = widget.userData?['phone']    ?? '+237 ---';
     _loadSettings();
-    _loadProfileData();
+    _loadData();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      isDarkMode = prefs.getBool('isDarkMode') ?? false;
-    });
+    setState(() => _isDark = prefs.getBool('isDarkMode') ?? false);
   }
 
-  Future<void> _toggleDarkMode(bool value) async {
+  Future<void> _toggleDark(bool val) async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      isDarkMode = value;
-      prefs.setBool('isDarkMode', value);
-    });
+    await prefs.setBool('isDarkMode', val);
+    setState(() => _isDark = val);
+    // Met à jour le thème de TOUTE l'application via le ValueNotifier global
+    themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light;
+    // Adapter la status bar selon le thème
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: val ? Brightness.light : Brightness.dark,
+    ));
   }
 
-  Future<void> _loadProfileData() async {
+  Future<void> _loadData() async {
     try {
-      int userId = widget.userData?['id'] ?? 0;
+      final id = widget.userData?['id'] ?? 0;
       final results = await Future.wait([
-        ApiService.getUserBalance(userId),
-        ApiService.getTrustScore(userId),
+        ApiService.getUserBalance(id),
+        ApiService.getTrustScore(id),
       ]);
-
       if (mounted) {
         setState(() {
-          balance = (results[0] as num).toDouble();
-          trustScore = (results[1] as num).toInt();
-          isLoading = false;
+          _balance    = (results[0] as num).toDouble();
+          _trustScore = (results[1] as num).toInt();
+          _isLoading  = false;
         });
       }
-    } catch (e) {
-      if (mounted) setState(() => isLoading = false);
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _pickImage() async {
     showCupertinoModalPopup(
       context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text("Photo de profil"),
-        message: const Text("Choisissez une source pour votre photo"),
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Photo de profil'),
         actions: [
           CupertinoActionSheetAction(
-            onPressed: () { Navigator.pop(context); _getFromSource(ImageSource.camera); },
-            child: const Text("Prendre une photo"),
+            onPressed: () { Navigator.pop(context); _getImage(ImageSource.camera); },
+            child: const Text('Prendre une photo'),
           ),
           CupertinoActionSheetAction(
-            onPressed: () { Navigator.pop(context); _getFromSource(ImageSource.gallery); },
-            child: const Text("Choisir dans la galerie"),
+            onPressed: () { Navigator.pop(context); _getImage(ImageSource.gallery); },
+            child: const Text('Choisir dans la galerie'),
           ),
         ],
         cancelButton: CupertinoActionSheetAction(
           isDestructiveAction: true,
           onPressed: () => Navigator.pop(context),
-          child: const Text("Annuler"),
+          child: const Text('Annuler'),
         ),
       ),
     );
   }
 
-  Future<void> _getFromSource(ImageSource source) async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: source, imageQuality: 50);
+  Future<void> _getImage(ImageSource source) async {
+    final img = await ImagePicker().pickImage(source: source, imageQuality: 60);
+    if (img != null && mounted) setState(() => _imageFile = File(img.path));
+  }
 
-    if (image != null) {
-      setState(() {
-        _imageFile = File(image.path);
-      });
-    }
+  void _logout() {
+    showCupertinoDialog(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Vous devrez vous reconnecter pour accéder à votre compte.'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () async {
+              await ApiService.clearToken();
+              if (mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (_) => false,
+                );
+              }
+            },
+            child: const Text('Déconnexion'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool dark = isDarkMode;
-    final Color currentBg = dark ? const Color(0xFF121212) : backgroundColor;
-    final Color currentCard = dark ? const Color(0xFF1E1E1E) : Colors.white;
-    final Color currentText = dark ? Colors.white : const Color(0xFF1A1A1A);
-    final Color currentSubText = dark ? Colors.white70 : Colors.grey[600]!;
+    final bg   = _isDark ? AppTheme.dark     : AppTheme.light;
+    final card = _isDark ? AppTheme.darkCard  : Colors.white;
+    final txt  = _isDark ? AppTheme.textLight : AppTheme.textDark;
+    final sub  = _isDark ? AppTheme.textMuted : const Color(0xFF888888);
 
     return Scaffold(
-      backgroundColor: currentBg,
+      backgroundColor: bg,
       body: SafeArea(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          color: currentBg,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-            child: Column(
-              children: [
-                _buildHeader(currentText, currentSubText),
-                const SizedBox(height: 35),
-                _buildStatsRow(currentCard, currentText, currentSubText),
-                const SizedBox(height: 30),
-                
-                _buildSectionTitle("Compte", currentText),
-                _buildSettingsBlock(currentCard, [
-                  _buildActionTile(Icons.person_outline, "Informations personnelles", currentText, () async {
-                    final result = await Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (c) => EditProfileScreen(
-                        userId: widget.userData?['id'] ?? 0, 
-                        currentName: localFullname, 
-                        currentPhone: localPhone
-                      ))
-                    );
-                    if (result != null && result is Map<String, String> && mounted) {
-                      setState(() {
-                        localFullname = result['name']!;
-                        localPhone = result['phone']!;
-                      });
-                    }
-                  }),
-                  _buildDivider(),
-                  _buildActionTile(Icons.lock_outline, "Sécurité et PIN", currentText, () {}),
-                ]),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+            : SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Column(
+                  children: [
+                    // ── Header profil ──────────────────────────────
+                    _buildHeader(txt, sub),
+                    const SizedBox(height: 24),
 
-                const SizedBox(height: 25),
+                    // ── Carte solde + score ────────────────────────
+                    _buildStatsCard(card, txt, sub),
+                    const SizedBox(height: 28),
 
-                _buildSectionTitle("Préférences", currentText),
-                _buildSettingsBlock(currentCard, [
-                  _buildToggleTile(Icons.dark_mode_outlined, "Mode Sombre", isDarkMode, currentText, (val) {
-                    _toggleDarkMode(val);
-                  }),
-                  _buildDivider(),
-                  _buildToggleTile(Icons.notifications_none, "Notifications push", pushNotifications, currentText, (val) {
-                    setState(() => pushNotifications = val);
-                  }),
-                ]),
+                    // ── Section Compte ─────────────────────────────
+                    _sectionTitle('Compte', sub),
+                    _settingsCard(card, [
+                      _tile(
+                        icon: Icons.person_outline_rounded,
+                        title: 'Informations personnelles',
+                        txtColor: txt,
+                        onTap: () async {
+                          final res = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => EditProfileScreen(
+                              userId: widget.userData?['id'] ?? 0,
+                              currentName: _fullname,
+                              currentPhone: _phone,
+                            )),
+                          );
+                          if (res is Map<String, String> && mounted) {
+                            setState(() {
+                              _fullname = res['name'] ?? _fullname;
+                              _phone    = res['phone'] ?? _phone;
+                            });
+                          }
+                        },
+                      ),
+                      _divider(),
+                      _tile(
+                        icon: Icons.lock_reset_rounded,
+                        title: 'Changer mon PIN',
+                        txtColor: txt,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ForgotPinScreen()),
+                        ),
+                      ),
+                      _divider(),
+                      _tile(
+                        icon: Icons.history_rounded,
+                        title: 'Historique des transactions',
+                        txtColor: txt,
+                        onTap: () {},
+                      ),
+                    ]),
 
-                const SizedBox(height: 40),
-                _buildLogoutButton(),
-                const SizedBox(height: 20),
-                Text("G-CAISE v1.0.2 - Yaoundé, CM", 
-                  style: TextStyle(color: currentSubText.withValues(alpha: 0.4), fontSize: 11)),
-              ],
-            ),
-          ),
-        ),
+                    const SizedBox(height: 20),
+
+                    // ── Section Préférences ────────────────────────
+                    _sectionTitle('Préférences', sub),
+                    _settingsCard(card, [
+                      _toggleTile(
+                        icon: Icons.dark_mode_outlined,
+                        title: 'Mode Sombre',
+                        value: _isDark,
+                        txtColor: txt,
+                        onChanged: _toggleDark,
+                      ),
+                      _divider(),
+                      _toggleTile(
+                        icon: Icons.notifications_outlined,
+                        title: 'Notifications push',
+                        value: _pushNotifications,
+                        txtColor: txt,
+                        onChanged: (v) => setState(() => _pushNotifications = v),
+                      ),
+                    ]),
+
+                    const SizedBox(height: 32),
+
+                    // ── Bouton déconnexion ─────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          backgroundColor: AppTheme.error.withValues(alpha: 0.08),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
+                        ),
+                        icon: const Icon(Icons.logout_rounded, color: AppTheme.error, size: 20),
+                        label: const Text('DÉCONNEXION',
+                            style: TextStyle(
+                                color: AppTheme.error,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14)),
+                        onPressed: _logout,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    Text(
+                      'G-Caisse v1.0.0 · Yaoundé, CM',
+                      style: TextStyle(color: sub.withValues(alpha: 0.4), fontSize: 11),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
       ),
     );
   }
 
-  Widget _buildHeader(Color txtColor, Color subTxtColor) {
+  // ── Widgets ──────────────────────────────────────────────
+
+  Widget _buildHeader(Color txt, Color sub) {
     return Column(
       children: [
         Stack(
@@ -192,155 +271,288 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: primaryColor, width: 2),
+                  border: Border.all(color: AppTheme.primary, width: 2.5),
+                  boxShadow: AppTheme.primaryShadow,
                 ),
                 child: CircleAvatar(
-                  radius: 55,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: _imageFile != null 
-                    ? FileImage(_imageFile!) 
-                    : const AssetImage('assets/logo.jpeg') as ImageProvider,
+                  radius: 52,
+                  backgroundColor: AppTheme.darkSurface,
+                  backgroundImage: _imageFile != null
+                      ? FileImage(_imageFile!) as ImageProvider
+                      : const AssetImage('assets/logo.jpeg'),
                 ),
               ),
             ),
             GestureDetector(
               onTap: _pickImage,
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: primaryColor,
-                child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: const BoxDecoration(
+                  color: AppTheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 14),
               ),
-            )
+            ),
           ],
         ),
-        const SizedBox(height: 15),
-        Text(localFullname, style: TextStyle(color: txtColor, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 14),
+        Text(_fullname,
+            style: TextStyle(color: txt, fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
-        Text(localPhone, style: TextStyle(color: subTxtColor, fontSize: 14)),
+        Text(_phone, style: TextStyle(color: sub, fontSize: 14)),
       ],
     );
   }
 
-  Widget _buildStatsRow(Color cardCol, Color txtCol, Color subTxtCol) {
+  Widget _buildStatsCard(Color card, Color txt, Color sub) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      decoration: BoxDecoration(color: cardCol, borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+      decoration: BoxDecoration(
+        color: card,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+        boxShadow: AppTheme.cardShadow,
+      ),
       child: Row(
         children: [
-          Expanded(child: _buildStatItem("Solde", "${balance.toStringAsFixed(0)} F", txtCol, subTxtCol)),
-          Container(width: 1, height: 30, color: Colors.grey.withValues(alpha: 0.2)),
-          Expanded(child: _buildStatItem("Score", "$trustScore%", txtCol, subTxtCol)),
+          Expanded(child: _statItem('Solde', '${_balance.toStringAsFixed(0)} F', txt, sub)),
+          Container(width: 1, height: 36, color: AppTheme.textMuted.withValues(alpha: 0.15)),
+          Expanded(child: _statItem('Score crédit', '$_trustScore%', txt, sub)),
+          Container(width: 1, height: 36, color: AppTheme.textMuted.withValues(alpha: 0.15)),
+          Expanded(child: _statItem('Statut', 'Actif ✓', AppTheme.success, sub)),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem(String label, String value, Color txtCol, Color subTxtCol) {
-    return Column(children: [
-      Text(label, style: TextStyle(color: subTxtCol, fontSize: 12)),
-      const SizedBox(height: 5),
-      Text(value, style: TextStyle(color: txtCol, fontSize: 18, fontWeight: FontWeight.bold)),
-    ]);
+  Widget _statItem(String label, String value, Color valColor, Color subColor) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(color: subColor, fontSize: 11, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        Text(value,
+            style: TextStyle(color: valColor, fontSize: 16, fontWeight: FontWeight.w800)),
+      ],
+    );
   }
 
-  Widget _buildSectionTitle(String title, Color textColor) => Padding(
-    padding: const EdgeInsets.only(left: 10, bottom: 10),
-    child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold))),
+  Widget _sectionTitle(String title, Color sub) => Padding(
+    padding: const EdgeInsets.only(left: 4, bottom: 10),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(title,
+          style: TextStyle(
+              color: sub, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+    ),
   );
 
-  Widget _buildSettingsBlock(Color bgColor, List<Widget> children) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
+  Widget _settingsCard(Color card, List<Widget> children) => Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    decoration: BoxDecoration(
+      color: card,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      boxShadow: AppTheme.cardShadow,
+    ),
     child: Column(children: children),
   );
 
-  Widget _buildActionTile(IconData icon, String title, Color txtColor, VoidCallback onTap) => ListTile(
-    leading: Icon(icon, color: primaryColor),
-    title: Text(title, style: TextStyle(color: txtColor, fontSize: 14)),
-    trailing: const Icon(Icons.chevron_right, size: 20),
-    onTap: onTap,
-  );
-
-  Widget _buildToggleTile(IconData icon, String title, bool val, Color txtColor, ValueChanged<bool> onChanged) => ListTile(
-    leading: Icon(icon, color: primaryColor),
-    title: Text(title, style: TextStyle(color: txtColor, fontSize: 14)),
-    trailing: CupertinoSwitch(activeColor: primaryColor, value: val, onChanged: onChanged),
-  );
-
-  Widget _buildDivider() => Divider(height: 1, indent: 50, endIndent: 20, color: Colors.grey.withValues(alpha: 0.1));
-
-  Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 54,
-      child: TextButton.icon(
-        style: TextButton.styleFrom(
-          backgroundColor: Colors.red.withValues(alpha: 0.08), 
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-        ),
-        icon: const Icon(Icons.logout, color: Colors.red, size: 20),
-        label: const Text("DÉCONNEXION", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-        onPressed: () => _showLogoutConfirmation(),
-      ),
-    );
-  }
-
-  void _showLogoutConfirmation() {
-    showCupertinoDialog(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text("Quitter ?"),
-        content: const Text("Vous devrez vous reconnecter pour accéder à vos tontines."),
-        actions: [
-          CupertinoDialogAction(child: const Text("Annuler"), onPressed: () => Navigator.pop(context)),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (c) => const LoginScreen()), (r) => false),
-            child: const Text("Déconnexion"),
+  Widget _tile({
+    required IconData icon,
+    required String title,
+    required Color txtColor,
+    required VoidCallback onTap,
+  }) =>
+      ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
-    );
-  }
+          child: Icon(icon, color: AppTheme.primary, size: 18),
+        ),
+        title: Text(title, style: TextStyle(color: txtColor, fontSize: 14, fontWeight: FontWeight.w500)),
+        trailing: Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted, size: 20),
+        onTap: onTap,
+      );
+
+  Widget _toggleTile({
+    required IconData icon,
+    required String title,
+    required bool value,
+    required Color txtColor,
+    required ValueChanged<bool> onChanged,
+  }) =>
+      ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppTheme.primary, size: 18),
+        ),
+        title: Text(title, style: TextStyle(color: txtColor, fontSize: 14, fontWeight: FontWeight.w500)),
+        trailing: CupertinoSwitch(
+          activeColor: AppTheme.primary,
+          value: value,
+          onChanged: onChanged,
+        ),
+      );
+
+  Widget _divider() => Divider(
+    height: 1,
+    indent: 56,
+    endIndent: 16,
+    color: AppTheme.textMuted.withValues(alpha: 0.1),
+  );
 }
 
-// --- CLASSE CORRECTIVE POUR LA NAVIGATION ---
-class EditProfileScreen extends StatelessWidget {
-  final int userId;
+// ── Écran modification du profil ─────────────────────────────────────────────
+
+class EditProfileScreen extends StatefulWidget {
+  final int    userId;
   final String currentName;
   final String currentPhone;
 
   const EditProfileScreen({
-    super.key, 
-    required this.userId, 
-    required this.currentName, 
-    required this.currentPhone
+    super.key,
+    required this.userId,
+    required this.currentName,
+    required this.currentPhone,
   });
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _phoneCtrl;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl  = TextEditingController(text: widget.currentName);
+    _phoneCtrl = TextEditingController(text: widget.currentPhone);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_nameCtrl.text.trim().isEmpty || _phoneCtrl.text.trim().isEmpty) return;
+    setState(() => _isLoading = true);
+    try {
+      await ApiService.updateProfile(widget.userId, _nameCtrl.text.trim(), _phoneCtrl.text.trim());
+      if (mounted) {
+        Navigator.pop(context, {'name': _nameCtrl.text.trim(), 'phone': _phoneCtrl.text.trim()});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceAll('Exception:', '').trim()),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.dark,
       appBar: AppBar(
-        title: const Text("Modifier le profil", style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text('Modifier le profil',
+            style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w700)),
+        leading: IconButton(
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.darkSurface,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textLight, size: 16),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            const Icon(Icons.construction, size: 80, color: Colors.orange),
-            const SizedBox(height: 20),
-            Text("Interface en cours de développement pour $currentName", textAlign: TextAlign.center),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context), 
-              child: const Text("Retour")
-            )
-          ],
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+
+              _label('Nom complet'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _nameCtrl,
+                style: const TextStyle(color: AppTheme.textLight, fontSize: 16),
+                decoration: AppTheme.fieldDecoration(
+                  hint: 'Votre nom complet',
+                  icon: Icons.person_outline_rounded,
+                  isDark: true,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              _label('Numéro de téléphone'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(color: AppTheme.textLight, fontSize: 16),
+                decoration: AppTheme.fieldDecoration(
+                  hint: '6XX XXX XXX',
+                  icon: Icons.phone_android_rounded,
+                  isDark: true,
+                ),
+              ),
+
+              const SizedBox(height: 36),
+
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  boxShadow: AppTheme.primaryShadow,
+                ),
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _save,
+                  style: AppTheme.primaryButton,
+                  child: _isLoading
+                      ? const SizedBox(width: 22, height: 22,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                      : const Text('ENREGISTRER LES MODIFICATIONS'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _label(String text) => Text(
+    text,
+    style: const TextStyle(
+      color: AppTheme.textMuted, fontSize: 13,
+      fontWeight: FontWeight.w600, letterSpacing: 0.3,
+    ),
+  );
 }

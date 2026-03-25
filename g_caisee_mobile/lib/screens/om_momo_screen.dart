@@ -68,12 +68,13 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
   void _executeFinalTransfer() async {
     setState(() => _isLoading = true);
     try {
-      String opForApi = _senderOperator.contains('Orange') ? 'orange' : 'mtn';
+      // Mapping correct vers les channels Notch Pay
+      String notchChannel = _senderOperator.contains('Orange') ? 'cm.orange' : 'cm.mtn';
       final result = await ApiService.processDirectTransfer(
         senderId: widget.userData?['id'] ?? 0,
         receiverPhone: _receiverPhoneController.text.trim(),
         amount: double.parse(_amountController.text),
-        operator: opForApi,
+        operator: notchChannel,
       );
 
       if (mounted) {

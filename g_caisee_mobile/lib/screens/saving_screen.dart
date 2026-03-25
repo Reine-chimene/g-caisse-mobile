@@ -128,10 +128,20 @@ class _SavingScreenState extends State<SavingScreen> {
                 try {
                   int userId = widget.userData?['id'] ?? 0;
                   if (isDeposit) {
-                    await ApiService.depositToSavings(userId, amount);
-                    _showSuccess("Fonds sécurisés dans le coffre !");
+                    // initiatePayment ouvre la page Notch Pay pour déposer
+                    final res = await ApiService.initiatePayment(
+                      userId, 
+                      widget.userData?['phone'] ?? '', 
+                      amount,
+                      name: widget.userData?['fullname'] ?? 'Membre G-Caisse',
+                    );
+                    if (res['success'] == true && res['payment_url'] != null && context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Redirection vers la page de paiement..."), backgroundColor: Colors.blue),
+                      );
+                    }
                   } else {
-                    // Logique de demande de retrait (Pending)
                     _showSuccess("Demande de retrait transmise (24h)");
                   }
                   _fetchRealData();

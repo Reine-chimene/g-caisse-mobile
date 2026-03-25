@@ -43,6 +43,23 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>G-Caisse utilise le micro pour envoyer des messages vocaux dans les groupes de tontine.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>G-Caisse accède aux fichiers pour les messages vocaux.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>co.notchpay.gcaisse</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gcaisse</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 </dict>

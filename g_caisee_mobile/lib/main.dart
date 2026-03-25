@@ -1,15 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:g_caisee_mobile/screens/splash_screen.dart';
-import 'package:g_caisee_mobile/screens/home_screen.dart'; 
+import 'package:g_caisee_mobile/screens/home_screen.dart';
 import 'package:g_caisee_mobile/screens/tontine_list_screen.dart';
 import 'package:g_caisee_mobile/screens/saving_screen.dart';
 import 'package:g_caisee_mobile/screens/profile_screen.dart';
+import 'services/offline_service.dart';
+import 'theme/app_theme.dart';
 
-// 💡 GLOBAL : Contrôleur pour changer le thème (Accessible partout dans l'app)
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+final ValueNotifier<String?> paymentResultNotifier = ValueNotifier(null);
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialiser le cache hors-ligne
+  await OfflineService.init();
+
+  // Charger le thème sauvegardé
+  final prefs = await SharedPreferences.getInstance();
+  final isDark = prefs.getBool('isDarkMode') ?? false;
+  themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
+
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+  ));
+
+  _initDeepLinkListener();
   runApp(const MyApp());
+}
+
+void _initDeepLinkListener() {
+  // Écouter les deep links entrants (gcaisse://payment?status=success)
+  const channel = MethodChannel('flutter/navigation');
+  channel.setMethodCallHandler((call) async {
+    if (call.method == 'pushRoute') {
+      final url = call.arguments as String?;
+      if (url != null && url.startsWith('gcaisse://payment')) {
+        final uri = Uri.parse(url);
+        paymentResultNotifier.value = uri.queryParameters['status'];
+      }
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -21,43 +55,9 @@ class MyApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (_, ThemeMode currentMode, __) {
         return MaterialApp(
-          debugShowCheckedModeBanner: false,
           title: 'G-CAISE',
-          
-          // --- THÈME CLAIR ---
-          theme: ThemeData(
-            brightness: Brightness.light, 
-            primaryColor: const Color(0xFFFF7900), // Orange Max It
-            scaffoldBackgroundColor: const Color(0xFFF5F6F8),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.white, 
-              foregroundColor: Colors.black,
-              elevation: 0,
-              centerTitle: true,
-            ),
-            bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-              selectedItemColor: Color(0xFFFF7900),
-              unselectedItemColor: Colors.grey,
-            ),
-          ),
-          
-          // --- THÈME SOMBRE ---
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primaryColor: const Color(0xFFFF7900), // Orange Max It
-            scaffoldBackgroundColor: const Color(0xFF121212),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF1E1E1E), 
-              foregroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-            ),
-            bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-              selectedItemColor: Color(0xFFFF7900),
-              unselectedItemColor: Colors.white54,
-            ),
-          ),
-          
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
           themeMode: currentMode,
           home: const SplashScreen(), 
         );

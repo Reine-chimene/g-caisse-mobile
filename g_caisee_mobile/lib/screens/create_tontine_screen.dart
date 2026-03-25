@@ -42,10 +42,9 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
       double amount = double.parse(_amountController.text);
       double commission = 2.0; 
 
-      // 👈 2. ET ICI : On envoie le vrai userId au serveur !
       await ApiService.createTontine(
         _nameController.text,
-        widget.userId, // Le vrai ID de l'utilisateur connecté
+        widget.userId,
         _frequency,
         amount,
         commission

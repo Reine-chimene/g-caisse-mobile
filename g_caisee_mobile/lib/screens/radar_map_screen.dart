@@ -83,7 +83,8 @@ class _RadarMapScreenState extends State<RadarMapScreen> {
       
       List<Marker> markers = [];
       for (var m in membersData) {
-        if (m['user_id'] == widget.userId) continue; // Utilise 'user_id' selon ton schéma SQL
+      // Le champ retourné par la route /locations est 'id' (pas 'user_id')
+      if (m['id'] == widget.userId) continue;
 
         final lat = double.tryParse(m['latitude'].toString()) ?? 0.0;
         final lon = double.tryParse(m['longitude'].toString()) ?? 0.0;

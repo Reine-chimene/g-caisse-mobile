@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:local_auth/local_auth.dart';
 import '../services/api_service.dart';
+import '../services/notchpay_service.dart';
+import '../services/offline_service.dart';
+import '../theme/app_theme.dart';
 import 'saving_screen.dart';
 import 'create_tontine_screen.dart';
 import 'profile_screen.dart';
@@ -11,6 +11,10 @@ import 'airtime_screen.dart';
 import 'history_screen.dart';
 import 'tontine_details_screen.dart';
 import 'bill_payment_screen.dart';
+import 'features/qr_code_screen.dart';
+import 'features/financial_dashboard_screen.dart';
+import 'features/ai_assistant_screen.dart';
+import 'features/gamification_screen.dart';
 
 // =========================================================
 // 1. WRAPPER PRINCIPAL
@@ -158,31 +162,42 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (!mounted) return;
     setState(() => isLoading = true);
     try {
-      // Sécurisation de l'ID pour le Backend
       final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
-      
       final results = await Future.wait([
         ApiService.getUserBalance(myId),
         ApiService.getTontines(myId),
       ]);
-
       if (mounted) {
         setState(() {
           totalBalance = results[0] as double;
-          mesTontines = results[1] as List<dynamic>;
-          isLoading = false;
+          mesTontines  = results[1] as List<dynamic>;
+          isLoading    = false;
         });
+        // Sauvegarder en cache hors-ligne
+        await OfflineService.saveBalance(totalBalance);
+        await OfflineService.saveTontines(mesTontines);
       }
     } catch (e) {
-      if (mounted) setState(() => isLoading = false);
-      debugPrint("Erreur chargement données: $e");
+      // Mode hors-ligne : charger depuis le cache
+      if (mounted) {
+        setState(() {
+          totalBalance = OfflineService.getBalance();
+          mesTontines  = OfflineService.getTontines();
+          isLoading    = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('⚠️ Mode hors-ligne — données en cache'),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      debugPrint('Erreur chargement données: $e');
     }
   }
 
   // --- LOGIQUE TRANSACTION (DÉPÔT & RETRAIT) ---
-  void _openTransactionDialog(bool isDeposit, String operator) {
+  void _openTransactionDialog(bool isDeposit, String operator, String notchChannel) {
     Navigator.pop(context);
-    // Pré-remplit avec le numéro du profil, mais modifiable
     final TextEditingController phoneCtrl = TextEditingController(text: widget.userData['phone']);
     final TextEditingController amountCtrl = TextEditingController();
     
@@ -193,14 +208,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 1. On demande d'abord le numéro
             TextField(
               controller: phoneCtrl, 
               keyboardType: TextInputType.phone, 
               decoration: const InputDecoration(labelText: "Numéro de téléphone", hintText: "6XXXXXXXX", prefixIcon: Icon(Icons.phone))
             ),
             const SizedBox(height: 15),
-            // 2. Ensuite le montant
             TextField(
               controller: amountCtrl, 
               keyboardType: TextInputType.number, 
@@ -215,7 +228,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
             onPressed: () async {
               if (phoneCtrl.text.isEmpty || amountCtrl.text.isEmpty) return;
               Navigator.pop(c);
-              _processTransaction(isDeposit, phoneCtrl.text.trim(), double.tryParse(amountCtrl.text) ?? 0);
+              // On passe le channel Notch Pay correct (cm.orange ou cm.mtn)
+              _processTransaction(isDeposit, phoneCtrl.text.trim(), double.tryParse(amountCtrl.text) ?? 0, notchChannel);
             },
             child: const Text("Valider", style: TextStyle(color: Colors.white)),
           )
@@ -224,26 +238,48 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Future<void> _processTransaction(bool isDeposit, String phone, double amount) async {
+  Future<void> _processTransaction(bool isDeposit, String phone, double amount, String notchChannel) async {
     try {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isDeposit ? "Initialisation du dépôt..." : "Traitement du retrait...")));
       
       final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
 
       if (isDeposit) {
-        final res = await ApiService.initiatePayment(myId, phone, amount, name: widget.userData['fullname']);
-        if (res['success'] == true && res['payment_url'] != null) {
-          final Uri url = Uri.parse(res['payment_url']);
-          if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-            throw Exception("Lien impossible à ouvrir");
-          }
-        } else {
-          throw Exception(res['message'] ?? "Erreur d'initialisation");
+        // Ouvre la page Notch Pay dans le navigateur
+        await NotchPayService.deposit(
+          context: context,
+          userId: myId,
+          amount: amount,
+          phone: phone,
+          name: widget.userData['fullname'] ?? 'Membre G-Caisse',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Page de paiement ouverte. Votre solde sera crédité après confirmation ✅'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 4),
+            ),
+          );
         }
       } else {
-        // Logique de Retrait
-        await ApiService.processPayout(userId: myId, amount: amount, phone: phone, name: widget.userData['fullname']);
-        if (mounted) _showSuccessDialog("Retrait initié avec succès sur le $phone");
+        final result = await ApiService.processPayout(
+          userId: myId,
+          amount: amount,
+          phone: phone,
+          name: widget.userData['fullname'],
+          channel: notchChannel,
+        );
+        if (mounted) {
+          final status = result['transfer_status'] ?? 'sent';
+          final statusMsg = {
+            'complete': 'Retrait effectué avec succès ✅',
+            'sent':     'Retrait envoyé, en attente de confirmation ⏳',
+            'processing': 'Retrait en cours de traitement ⏳',
+            'failed':   'Retrait échoué, votre solde a été restitué ❌',
+          }[status] ?? 'Retrait initié sur $phone';
+          _showSuccessDialog(statusMsg);
+        }
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: Colors.red));
@@ -327,9 +363,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openTransactionDialog(isDeposit, "Orange")),
-                _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openTransactionDialog(isDeposit, "MTN")),
-                if (isDeposit) // La carte n'est souvent dispo que pour le dépôt
+                // channel Notch Pay : cm.orange pour Orange, cm.mtn pour MTN
+                _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openTransactionDialog(isDeposit, "Orange", "cm.orange")),
+                _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openTransactionDialog(isDeposit, "MTN", "cm.mtn")),
+                if (isDeposit)
                   _logoBtn("Carte", '', () => Navigator.pop(context), icon: Icons.credit_card),
               ],
             ),
@@ -366,7 +403,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   child: Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 15),
-                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange.withOpacity(0.2))),
+                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange.withValues(alpha: 0.2))),
                     child: Center(child: Text(mesTontines[i]['name'] ?? "Groupe", textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500))),
                   ),
                 ),
@@ -380,21 +417,32 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
+      crossAxisCount: 3,
       padding: const EdgeInsets.all(20),
-      mainAxisSpacing: 15,
-      crossAxisSpacing: 15,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.9,
       children: [
-        _serviceCard(Icons.phone_android, "Recharge", Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (c) => AirtimeScreen(userData: widget.userData)))),
-        _serviceCard(Icons.compare_arrows, "OM/MoMo", Colors.blue, () => Navigator.push(context, MaterialPageRoute(builder: (c) => OmMomoScreen(userData: widget.userData)))),
-        _serviceCard(Icons.savings, "Épargne", Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (c) => SavingScreen(userData: widget.userData)))),
-        _serviceCard(Icons.add_business, "Créer Tontine", Colors.purple, () {
-          Navigator.push(
-            context, 
-            MaterialPageRoute(builder: (c) => CreateTontineScreen(userId: int.tryParse(widget.userData['id'].toString()) ?? 0))
-          ).then((_) => _loadData()); // Rafraîchit après création
-        }),
-        _serviceCard(Icons.lightbulb_outline, "Factures", Colors.yellow.shade800, () => Navigator.push(context, MaterialPageRoute(builder: (c) => BillPaymentScreen(userData: widget.userData)))),
+        _serviceCard(Icons.phone_android, "Recharge",   AppTheme.primary,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => AirtimeScreen(userData: widget.userData)))),
+        _serviceCard(Icons.compare_arrows, "OM/MoMo",   Colors.blue,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => OmMomoScreen(userData: widget.userData)))),
+        _serviceCard(Icons.savings, "Épargne",           Colors.green,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => SavingScreen(userData: widget.userData)))),
+        _serviceCard(Icons.add_business, "Tontine",      Colors.purple,
+            () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => CreateTontineScreen(userId: int.tryParse(widget.userData['id'].toString()) ?? 0)))
+                .then((_) => _loadData())),
+        _serviceCard(Icons.lightbulb_outline, "Factures", Colors.amber,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => BillPaymentScreen(userData: widget.userData)))),
+        _serviceCard(Icons.qr_code_scanner_rounded, "QR Code", Colors.teal,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => QrCodeScreen(userData: widget.userData)))),
+        _serviceCard(Icons.bar_chart_rounded, "Finances",  Colors.indigo,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => FinancialDashboardScreen(userData: widget.userData)))),
+        _serviceCard(Icons.auto_awesome_rounded, "Assistant", Colors.deepOrange,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => AiAssistantScreen(userData: widget.userData)))),
+        _serviceCard(Icons.emoji_events_rounded, "Badges",   const Color(0xFFFFD700),
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => GamificationScreen(userData: widget.userData)))),
       ],
     );
   }
@@ -405,7 +453,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       onTap: onTap,
       child: Column(
         children: [
-          CircleAvatar(backgroundColor: orangeColor.withOpacity(0.1), child: Icon(icon, color: orangeColor)),
+          CircleAvatar(backgroundColor: orangeColor.withValues(alpha: 0.1), child: Icon(icon, color: orangeColor)),
           const SizedBox(height: 5),
           Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
         ],
@@ -417,7 +465,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 30), Text(label, style: const TextStyle(fontWeight: FontWeight.bold))]),
       ),
     );

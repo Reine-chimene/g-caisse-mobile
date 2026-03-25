@@ -174,7 +174,8 @@ class _SocialScreenState extends State<SocialScreen> {
 
   Widget _buildEventCard(Map event) {
     double target = double.tryParse(event['target_amount'].toString()) ?? 0.0;
-    double collected = double.tryParse(event['collected_amount'].toString()) ?? 0.0;
+    // La colonne en DB s'appelle 'collected' (pas 'collected_amount')
+    double collected = double.tryParse(event['collected'].toString()) ?? 0.0;
     double progress = target > 0 ? collected / target : 0.0;
     bool isCompleted = collected >= target;
 
