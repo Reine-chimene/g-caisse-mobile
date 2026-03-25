@@ -38,29 +38,29 @@ class ApiService {
   // 1. UTILISATEURS & PROFIL
   // ==========================================
 
-  static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
-    try {
-      final res = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"phone": phone, "pincode": pin}),
-      ).timeout(const Duration(seconds: 45));
+ static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
+  try {
+    final res = await http.post(
+      Uri.parse('$baseUrl/login'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "phone": phone.trim(), 
+        "pincode": pin.trim() // On envoie le PIN tel quel
+      }),
+    ).timeout(const Duration(seconds: 45));
 
-      final data = jsonDecode(res.body);
-      if (res.statusCode == 200) {
-        // Sauvegarder le token JWT reçu du serveur
-        if (data['token'] != null) await saveToken(data['token']);
-        return data;
-      } else {
-        throw Exception(data['message'] ?? "Identifiants incorrects");
-      }
-    } on TimeoutException {
-      throw Exception("Le serveur est en cours de démarrage, réessaie dans 10 secondes.");
-    } catch (e) {
-      throw Exception(e.toString());
+    final data = jsonDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (data['token'] != null) await saveToken(data['token']);
+      return data;
+    } else {
+      throw Exception(data['message'] ?? "Identifiants incorrects");
     }
+  } catch (e) {
+    throw Exception(e.toString());
   }
-
+}
   static Future<void> registerUser(String name, String phone, String pin) async {
     try {
       final res = await http.post(
