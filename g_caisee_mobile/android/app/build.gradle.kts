@@ -5,40 +5,32 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+
+
 android {
-    namespace = "com.example.g_caisee_mobile"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdkVersion 34 // Ou ta version actuelle
+
+    defaultConfig {
+        // ... tes configurations actuelles
+        multiDexEnabled true // Recommandé avec les grosses lib comme Zego
+    }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        // Active le support des fonctionnalités Java 8
+        coreLibraryDesugaringEnabled true 
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
-    defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.g_caisee_mobile"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-    }
-
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
-        }
+        jvmTarget = '1.8'
     }
 }
 
+dependencies {
+    // Ajoute cette ligne spécifique pour corriger l'erreur AAR Metadata
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.3'
+}
 flutter {
     source = "../.."
 }

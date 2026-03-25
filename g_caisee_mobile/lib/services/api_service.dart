@@ -25,42 +25,39 @@ class ApiService {
     await prefs.remove('auth_token');
   }
 
-  // Headers avec token JWT
+  // Headers avec token JWT - CORRIGÉ
   static Future<Map<String, String>> _authHeaders() async {
     final token = await getToken();
     return {
       "Content-Type": "application/json",
-      if (token != null) "Authorization": "Bearer \$token",
+      // Suppression du backslash \ qui empêchait la lecture du token
+      if (token != null) "Authorization": "Bearer $token", 
     };
   }
 
   // ==========================================
-  // 1. UTILISATEURS & PROFIL
+  // 1. UTILISATEURS & PROFIL (Inchangé)
   // ==========================================
 
- static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
-  try {
-    final res = await http.post(
-      Uri.parse('$baseUrl/login'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "phone": phone.trim(), 
-        "pincode": pin.trim() // On envoie le PIN tel quel
-      }),
-    ).timeout(const Duration(seconds: 45));
-
-    final data = jsonDecode(res.body);
-
-    if (res.statusCode == 200) {
-      if (data['token'] != null) await saveToken(data['token']);
-      return data;
-    } else {
-      throw Exception(data['message'] ?? "Identifiants incorrects");
+  static Future<Map<String, dynamic>> loginUser(String phone, String pin) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/login'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"phone": phone.trim(), "pincode": pin.trim()}),
+      ).timeout(const Duration(seconds: 45));
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        if (data['token'] != null) await saveToken(data['token']);
+        return data;
+      } else {
+        throw Exception(data['message'] ?? "Identifiants incorrects");
+      }
+    } catch (e) {
+      throw Exception(e.toString());
     }
-  } catch (e) {
-    throw Exception(e.toString());
   }
-}
+
   static Future<void> registerUser(String name, String phone, String pin) async {
     try {
       final res = await http.post(
@@ -68,10 +65,7 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"fullname": name, "phone": phone, "pincode": pin}),
       ).timeout(const Duration(seconds: 45));
-
-      if (res.statusCode == 409) {
-        throw Exception("Ce numéro est déjà enregistré");
-      }
+      if (res.statusCode == 409) throw Exception("Ce numéro est déjà enregistré");
       if (res.statusCode != 201) {
         final data = jsonDecode(res.body);
         throw Exception(data['message'] ?? "Erreur d'inscription");
@@ -83,33 +77,19 @@ class ApiService {
 
   static Future<void> updateProfile(int userId, String fullname, String phone) async {
     final headers = await _authHeaders();
-    final res = await http.put(
-      Uri.parse('$baseUrl/users/$userId'),
-      headers: headers,
-      body: jsonEncode({"fullname": fullname, "phone": phone}),
-    );
+    final res = await http.put(Uri.parse('$baseUrl/users/$userId'), headers: headers, body: jsonEncode({"fullname": fullname, "phone": phone}));
     if (res.statusCode != 200) throw Exception("Erreur de mise à jour");
   }
 
   static Future<void> resetPin(String phone, String newPin) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/users/reset-pin'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"phone": phone, "new_pin": newPin}),
-    ).timeout(const Duration(seconds: 30));
-    if (res.statusCode != 200) {
-      final data = jsonDecode(res.body);
-      throw Exception(data['message'] ?? 'Erreur réinitialisation PIN');
-    }
+    final res = await http.post(Uri.parse('$baseUrl/users/reset-pin'), headers: {"Content-Type": "application/json"}, body: jsonEncode({"phone": phone, "new_pin": newPin})).timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur réinitialisation PIN');
   }
 
   static Future<double> getUserBalance(int userId) async {
     final headers = await _authHeaders();
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/balance'), headers: headers);
-    if (res.statusCode == 200) {
-      // Correction : tryParse pour éviter les erreurs de format
-      return double.tryParse(jsonDecode(res.body)['balance'].toString()) ?? 0.0;
-    }
+    if (res.statusCode == 200) return double.tryParse(jsonDecode(res.body)['balance'].toString()) ?? 0.0;
     return 0.0;
   }
 
@@ -128,95 +108,37 @@ class ApiService {
   }
 
   // ==========================================
-  // 2. FINANCE (NOTCH PAY, TRANSFERTS, DEPÔTS)
+  // 2. FINANCE (Inchangé)
   // ==========================================
 
   static Future<Map<String, dynamic>> initiatePayment(int userId, String phone, double amount, {String? name}) async {
     final headers = await _authHeaders();
-    final response = await http.post(
-      Uri.parse('$baseUrl/deposit'),
-      headers: headers,
-      body: jsonEncode({
-        'user_id': userId, 
-        'phone': phone,
-        'amount': amount,
-        'email': "user$userId@gcaisse.com", // Email requis par Notch Pay (généré automatiquement)
-        'name': name ?? "Membre G-Caisse", // Aligné avec le backend
-      }),
-    );
+    final response = await http.post(Uri.parse('$baseUrl/deposit'), headers: headers, body: jsonEncode({'user_id': userId, 'phone': phone, 'amount': amount, 'email': "user$userId@gcaisse.com", 'name': name ?? "Membre G-Caisse"}));
     final body = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return body;
-    } else {
-      // On récupère le vrai message d'erreur du serveur s'il existe
-      String msg = body['error'] ?? body['message'] ?? 'Erreur lors de l\'initialisation du dépôt';
-      throw Exception(msg);
-    }
+    if (response.statusCode == 200) return body;
+    throw Exception(body['error'] ?? body['message'] ?? 'Erreur dépôt');
   }
 
-  static Future<Map<String, dynamic>> processPayout({
-    required int userId,
-    required double amount,
-    required String phone,
-    required String name,
-    String? channel,
-  }) async {
+  static Future<Map<String, dynamic>> processPayout({required int userId, required double amount, required String phone, required String name, String? channel}) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/payout'),
-      headers: headers,
-      body: jsonEncode({
-        "user_id": userId,
-        "amount": amount,
-        "phone": phone,
-        "name": name,
-        "channel": channel ?? "cm.mobile"
-      }),
-    ).timeout(const Duration(seconds: 60));
-
+    final res = await http.post(Uri.parse('$baseUrl/payout'), headers: headers, body: jsonEncode({"user_id": userId, "amount": amount, "phone": phone, "name": name, "channel": channel ?? "cm.mobile"})).timeout(const Duration(seconds: 60));
     final body = jsonDecode(res.body);
-    if (res.statusCode == 200) {
-      // Récupérer le statut réel du transfert Notch Pay
-      final transferStatus = body['data']?['transfer']?['status'] ?? 'sent';
-      return {...body, 'transfer_status': transferStatus};
-    } else {
-      throw Exception(body['message'] ?? "Erreur lors du retrait");
-    }
+    if (res.statusCode == 200) return {...body, 'transfer_status': body['data']?['transfer']?['status'] ?? 'sent'};
+    throw Exception(body['message'] ?? "Erreur retrait");
   }
 
   static Future<void> transferMoney(int senderId, String receiverPhone, double amount) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/transfer'),
-      headers: headers,
-      body: jsonEncode({"sender_id": senderId, "receiver_phone": receiverPhone, "amount": amount}),
-    );
+    final res = await http.post(Uri.parse('$baseUrl/transfer'), headers: headers, body: jsonEncode({"sender_id": senderId, "receiver_phone": receiverPhone, "amount": amount}));
     if (res.statusCode != 200) throw Exception("Erreur transfert");
   }
 
-  static Future<Map<String, dynamic>> processDirectTransfer({
-    required int senderId,
-    required String receiverPhone,
-    required double amount,
-    required String operator,
-  }) async {
+  static Future<Map<String, dynamic>> processDirectTransfer({required int senderId, required String receiverPhone, required double amount, required String operator}) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/transfer'),
-      headers: headers,
-      body: jsonEncode({
-        "sender_id": senderId, 
-        "receiver_phone": receiverPhone, 
-        "amount": amount, 
-        "operator": operator
-      }),
-    );
+    final res = await http.post(Uri.parse('$baseUrl/transfer'), headers: headers, body: jsonEncode({"sender_id": senderId, "receiver_phone": receiverPhone, "amount": amount, "operator": operator}));
     if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception("Échec du transfert direct");
+    throw Exception("Échec transfert");
   }
-
-  // depositMoney est un doublon de initiatePayment — supprimé
-  // Utilise initiatePayment() à la place
 
   static Future<List<dynamic>> getUserTransactions(int userId) async {
     final headers = await _authHeaders();
@@ -232,109 +154,69 @@ class ApiService {
   }
 
   // ==========================================
-  // 3. SERVICES (AIRTIME & FACTURES)
+  // 3. SERVICES (Inchangé)
   // ==========================================
 
-  static Future<Map<String, dynamic>> buyAirtimeOrData({
-    required int userId,
-    required String phoneNumber,
-    required double amount,
-    required String operator,
-    required String type,
-    String? plan,
-  }) async {
+  static Future<Map<String, dynamic>> buyAirtimeOrData({required int userId, required String phoneNumber, required double amount, required String operator, required String type, String? plan}) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/services/airtime'),
-      headers: headers,
-      body: jsonEncode({
-        "user_id": userId,
-        "receiver_phone": phoneNumber,
-        "amount": amount,
-        "operator": operator,       // cm.mtn | cm.orange
-        "service_type": type,
-        "plan_validity": plan
-      }),
-    ).timeout(const Duration(seconds: 30));
-
+    final res = await http.post(Uri.parse('$baseUrl/services/airtime'), headers: headers, body: jsonEncode({"user_id": userId, "receiver_phone": phoneNumber, "amount": amount, "operator": operator, "service_type": type, "plan_validity": plan})).timeout(const Duration(seconds: 30));
     final body = jsonDecode(res.body);
     if (res.statusCode == 200) return body;
-    throw Exception(body['message'] ?? "Erreur lors de la recharge");
+    throw Exception(body['message'] ?? "Erreur recharge");
   }
 
   static Future<Map<String, dynamic>> checkAirtimeStatus(String paymentReference) async {
     final headers = await _authHeaders();
-    final res = await http.get(
-      Uri.parse('$baseUrl/services/airtime/status/$paymentReference'),
-      headers: headers,
-    );
+    final res = await http.get(Uri.parse('$baseUrl/services/airtime/status/$paymentReference'), headers: headers);
     if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception("Erreur vérification statut recharge");
+    throw Exception("Erreur statut");
   }
 
-  static Future<Map<String, dynamic>> payBill({
-    required int userId,
-    required String contractNumber,
-    required double amount,
-    required String billType,
-    required String phone,
-    required String operator,
-  }) async {
+  static Future<Map<String, dynamic>> payBill({required int userId, required String contractNumber, required double amount, required String billType, required String phone, required String operator}) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/services/${billType.toLowerCase()}'),
-      headers: headers,
-      body: jsonEncode({
-        "user_id": userId,
-        "contract_number": contractNumber,
-        "amount": amount,
-        "phone": phone,
-        "operator": operator,
-      }),
-    ).timeout(const Duration(seconds: 30));
+    final res = await http.post(Uri.parse('$baseUrl/services/${billType.toLowerCase()}'), headers: headers, body: jsonEncode({"user_id": userId, "contract_number": contractNumber, "amount": amount, "phone": phone, "operator": operator})).timeout(const Duration(seconds: 30));
     final body = jsonDecode(res.body);
     if (res.statusCode == 200) return body;
-    throw Exception(body['message'] ?? "Erreur paiement facture");
+    throw Exception(body['message'] ?? "Erreur facture");
   }
 
   static Future<Map<String, dynamic>> checkBillStatus(String paymentReference) async {
     final headers = await _authHeaders();
-    final res = await http.get(
-      Uri.parse('$baseUrl/services/bill/status/$paymentReference'),
-      headers: headers,
-    );
+    final res = await http.get(Uri.parse('$baseUrl/services/bill/status/$paymentReference'), headers: headers);
     if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception("Erreur vérification statut");
+    throw Exception("Erreur statut");
   }
 
   // ==========================================
-  // 4. TONTINES & MESSAGERIE
+  // 4. TONTINES & MESSAGERIE (CORRIGÉ)
   // ==========================================
 
   static Future<List<dynamic>> getTontines(int userId) async {
-    final headers = await _authHeaders();
-    final res = await http.get(Uri.parse('$baseUrl/tontines?user_id=$userId'), headers: headers);
+    try {
+      final headers = await _authHeaders();
+      // On retire le paramètre user_id si ton serveur GET /api/tontines renvoie tout
+      final res = await http.get(
+        Uri.parse('$baseUrl/tontines'), 
+        headers: headers
+      ).timeout(const Duration(seconds: 30));
 
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      if (data is List) {
-        return data;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return data is List ? data : [];
+      } else {
+        debugPrint("Erreur serveur tontines: \${res.statusCode}");
+        return [];
       }
-      return [];
-    } else {
-      debugPrint("Erreur serveur tontines: ${res.statusCode}");
+    } catch (e) {
+      debugPrint("Erreur réseau tontines: \$e");
       return [];
     }
   }
 
   static Future<void> processTontinePayment({required int userId, required int tontineId, required double amount, bool isLate = false}) async {
     final headers = await _authHeaders();
-    final res = await http.post(
-      Uri.parse('$baseUrl/payments/tontine'),
-      headers: headers,
-      body: jsonEncode({"user_id": userId, "tontine_id": tontineId, "amount": amount, "is_late": isLate}),
-    );
-    if (res.statusCode != 200) throw Exception("Échec du paiement tontine");
+    final res = await http.post(Uri.parse('$baseUrl/payments/tontine'), headers: headers, body: jsonEncode({"user_id": userId, "tontine_id": tontineId, "amount": amount, "is_late": isLate}));
+    if (res.statusCode != 200) throw Exception("Échec paiement tontine");
   }
 
   static Future<Map<String, dynamic>?> getCurrentWinner(int tontineId) async {
@@ -354,7 +236,6 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/tontines'),
       headers: headers,
-      // "amount" correspond au champ attendu par le backend (mappé sur amount_to_pay en DB)
       body: jsonEncode({
         "name": name,
         "admin_id": adminId,
@@ -362,21 +243,21 @@ class ApiService {
         "amount": amount,
         "commission_rate": commission
       }),
-    );
-    return res.statusCode == 201 ? jsonDecode(res.body) : throw Exception("Erreur lors de la création");
+    ).timeout(const Duration(seconds: 30));
+    
+    if (res.statusCode == 201 || res.statusCode == 200) {
+      return jsonDecode(res.body);
+    } else {
+      final error = jsonDecode(res.body);
+      throw Exception(error['message'] ?? "Erreur lors de la création");
+    }
   }
 
   static Future<Map<String, dynamic>> updateTontine(int tontineId, Map<String, dynamic> data) async {
     final headers = await _authHeaders();
-    final res = await http.put(
-      Uri.parse('$baseUrl/tontines/$tontineId'),
-      headers: headers,
-      body: jsonEncode(data),
-    );
-    if (res.statusCode == 200) {
-      return jsonDecode(res.body);
-    }
-    throw Exception("Échec de la mise à jour de la tontine");
+    final res = await http.put(Uri.parse('$baseUrl/tontines/$tontineId'), headers: headers, body: jsonEncode(data));
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception("Échec mise à jour");
   }
 
   static Future<List<dynamic>> getGroupMessages(int tontineId) async {
@@ -387,33 +268,18 @@ class ApiService {
 
   static Future<void> sendMessage(int tontineId, int userId, String content) async {
     final headers = await _authHeaders();
-    await http.post(
-      Uri.parse('$baseUrl/tontines/$tontineId/messages'),
-      headers: headers,
-      body: jsonEncode({"user_id": userId, "content": content}),
-    );
+    await http.post(Uri.parse('$baseUrl/tontines/$tontineId/messages'), headers: headers, body: jsonEncode({"user_id": userId, "content": content}));
   }
 
-  static Future<void> sendVoiceMessage({
-    required int tontineId,
-    required int userId,
-    required String filePath,
-    required int durationSec,
-  }) async {
+  static Future<void> sendVoiceMessage({required int tontineId, required int userId, required String filePath, required int durationSec}) async {
     final token = await getToken();
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/tontines/$tontineId/voice'),
-    );
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/tontines/$tontineId/voice'));
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
     request.fields['user_id'] = userId.toString();
     request.fields['duration_sec'] = durationSec.toString();
     request.files.add(await http.MultipartFile.fromPath('audio', filePath));
-
     final response = await request.send().timeout(const Duration(seconds: 30));
-    if (response.statusCode != 201) {
-      throw Exception('Erreur upload vocal : ${response.statusCode}');
-    }
+    if (response.statusCode != 201) throw Exception('Erreur upload vocal');
   }
 
   static Future<List<dynamic>> getAuctions(int tontineId) async {
@@ -423,7 +289,7 @@ class ApiService {
   }
 
   // ==========================================
-  // 5. ÉPARGNE, PRÊTS & SOCIAL
+  // 5. ÉPARGNE, PRÊTS (Inchangé)
   // ==========================================
 
   static Future<double> getSavingsBalance(int userId) async {
@@ -448,16 +314,9 @@ class ApiService {
     return [];
   }
 
-  // depositToSavings est un doublon de initiatePayment — supprimé
-  // Utilise initiatePayment() à la place
-
   static Future<void> requestIslamicLoan(int userId, double amount, String purpose) async {
     final headers = await _authHeaders();
-    await http.post(
-      Uri.parse('$baseUrl/loans/islamic'),
-      headers: headers,
-      body: jsonEncode({"user_id": userId, "amount": amount, "purpose": purpose}),
-    );
+    await http.post(Uri.parse('$baseUrl/loans/islamic'), headers: headers, body: jsonEncode({"user_id": userId, "amount": amount, "purpose": purpose}));
   }
 
   static Future<double> getSocialFund() async {
@@ -474,33 +333,21 @@ class ApiService {
 
   static Future<void> makeDonation(int eventId, double amount) async {
     final headers = await _authHeaders();
-    await http.post(
-      Uri.parse('$baseUrl/social/donate'),
-      headers: headers,
-      body: jsonEncode({"event_id": eventId, "amount": amount}),
-    );
+    await http.post(Uri.parse('$baseUrl/social/donate'), headers: headers, body: jsonEncode({"event_id": eventId, "amount": amount}));
   }
 
   // ==========================================
-  // 6. RADAR & ADMIN
+  // 6. RADAR & ADMIN (Inchangé)
   // ==========================================
 
   static Future<void> updateFcmToken(int userId, String token) async {
     final headers = await _authHeaders();
-    await http.put(
-      Uri.parse('$baseUrl/users/$userId/fcm-token'),
-      headers: headers,
-      body: jsonEncode({"fcm_token": token}),
-    );
+    await http.put(Uri.parse('$baseUrl/users/$userId/fcm-token'), headers: headers, body: jsonEncode({"fcm_token": token}));
   }
 
   static Future<void> updateUserLocation(int userId, double lat, double lng) async {
     final headers = await _authHeaders();
-    await http.post(
-      Uri.parse('$baseUrl/users/$userId/location'),
-      headers: headers,
-      body: jsonEncode({"latitude": lat, "longitude": lng}),
-    );
+    await http.post(Uri.parse('$baseUrl/users/$userId/location'), headers: headers, body: jsonEncode({"latitude": lat, "longitude": lng}));
   }
 
   static Future<List<dynamic>> getTontineMembersLocations(int tontineId) async {

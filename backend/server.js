@@ -122,45 +122,86 @@ app.post('/api/register', requireFields('fullname', 'phone', 'pincode'), async (
 // Route de connexion (Version sans hachage pour test)
 app.post('/api/login', async (req, res) => {
     const { phone, pincode } = req.body;
+    console.log(`[AUTH] Tentative pour: ${phone}`);
 
     try {
-        // Recherche de l'utilisateur par téléphone
-        const result = await db.query(
-            "SELECT * FROM public.users WHERE phone = $1", 
-            [phone]
-        );
+        const result = await db.query("SELECT * FROM public.users WHERE phone = $1", [phone]);
 
         if (result.rows.length === 0) {
+            console.log(`[AUTH] Utilisateur non trouvé: ${phone}`);
             return res.status(401).json({ message: "Utilisateur non trouvé" });
         }
 
         const user = result.rows[0];
 
-        // COMPARAISON DIRECTE (Texte brut)
-        // On compare ce que l'utilisateur a tapé avec la colonne pincode_hash
-        if (String(pincode) !== String(user.pincode_hash)) {
+        // --- DIAGNOSTIC ---
+        console.log(`[DEBUG] Reçu du téléphone: "${pincode}"`);
+        console.log(`[DEBUG] En base de données: "${user.pincode_hash}"`);
+        // ------------------
+
+        // Comparaison simple en forçant le format String
+        if (String(pincode).trim() !== String(user.pincode_hash).trim()) {
+            console.log(`[AUTH] Échec: PIN incorrect pour ${phone}`);
             return res.status(401).json({ message: "Code PIN incorrect" });
         }
 
-        // Création du token JWT pour les prochaines requêtes
         const token = jwt.sign(
             { id: user.id, phone: user.phone }, 
-            process.env.JWT_SECRET || 'votre_cle_secrete', 
+            process.env.JWT_SECRET || 'secret_g_caisse', 
             { expiresIn: '7d' }
         );
 
-        // On retire le code PIN de l'objet avant de l'envoyer au téléphone
         delete user.pincode_hash;
-
-        res.json({
-            ...user,
-            token: token
-        });
+        console.log(`[AUTH] Succès pour ${phone}`);
+        
+        res.json({ ...user, token });
 
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: "Erreur serveur lors de la connexion" });
+        res.status(500).json({ message: "Erreur serveur" });
     }
+
+// ==========================================
+// ROUTES TONTINES (AJOUTÉES)
+// ==========================================
+
+// 1. RÉCUPÉRER TOUTES LES TONTINES
+app.get('/api/tontines', authenticate, async (req, res) => {
+    try {
+        // On récupère les tontines actives. 
+        // Si tu veux filtrer par utilisateur, utilise req.query.user_id
+        const result = await db.query(
+            "SELECT * FROM public.tontines WHERE status = 'active' ORDER BY created_at DESC"
+        );
+        
+        console.log(`[TONTINE] ${result.rows.length} tontines trouvées`);
+        res.json(result.rows); 
+    } catch (err) {
+        console.error("Erreur SQL tontines:", err.message);
+        res.status(500).json({ message: "Erreur lors de la récupération des tontines" });
+    }
+});
+
+// 2. CRÉER UNE TONTINE
+app.post('/api/tontines', authenticate, requireFields('name', 'admin_id', 'frequency', 'amount'), async (req, res) => {
+    const { name, admin_id, frequency, amount, commission_rate } = req.body;
+    
+    try {
+        const query = `
+            INSERT INTO public.tontines (name, admin_id, frequency, amount_to_pay, commission_rate, status)
+            VALUES ($1, $2, $3, $4, $5, 'active')
+            RETURNING *`;
+        
+        const values = [name, admin_id, frequency, amount, commission_rate || 0];
+        const result = await db.query(query, values);
+        
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error("Erreur création tontine:", err.message);
+        res.status(500).json({ message: "Échec de la création" });
+    }
+});
+
 });
 // ==========================================
 // AUTRES ROUTES (Dépôt & Webhook)

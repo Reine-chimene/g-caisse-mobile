@@ -23,3 +23,7 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+dependencies {
+    // Assure-toi que cette ligne est présente ou similaire
+    classpath 'com.android.tools.build:gradle:7.3.0' 
+}
