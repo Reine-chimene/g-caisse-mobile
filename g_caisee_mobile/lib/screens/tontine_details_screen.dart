@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'auction_screen.dart';
+import 'chat_screen.dart';
+import 'call_screen.dart';
+import 'radar_map_screen.dart';
+import 'edit_tontine_screen.dart';
+// import 'package:contacts_service/contacts_service.dart';
+// import 'package:permission_handler/permission_handler.dart';
+
+// --- PLACEHOLDER SCREENS ---
+// In a real app, these would be in their own files (e.g., lib/screens/chat_screen.dart)
 
 class TontineDetailsScreen extends StatefulWidget {
   final Map tontine;
@@ -18,15 +27,18 @@ class TontineDetailsScreen extends StatefulWidget {
   State<TontineDetailsScreen> createState() => _TontineDetailsScreenState();
 }
 
-class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
+class _TontineDetailsScreenState extends State<TontineDetailsScreen> with SingleTickerProviderStateMixin {
   final Color primaryColor = const Color(0xFFD4AF37); 
   final Color darkCardColor = const Color(0xFF1A1A2E);
 
+  late Map<String, dynamic> _currentTontine;
   List<dynamic> members = [];
   Map<String, dynamic>? currentWinner; // Pour stocker le bénéficiaire du tour
   bool isLoading = true;
   bool isProcessingPayment = false;
   
+  late TabController _tabController;
+
   // États pour les fonds
   double userBalance = 0.0;
   double socialFund = 0.0;
@@ -35,7 +47,15 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _currentTontine = Map<String, dynamic>.from(widget.tontine);
+    _tabController = TabController(length: 3, vsync: this);
     _refreshData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshData() async {
@@ -43,10 +63,10 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     setState(() => isLoading = true);
     try {
       final results = await Future.wait([
-        ApiService.getTontineMembers(widget.tontine['id']),
+        ApiService.getTontineMembers(_currentTontine['id'] as int),
         ApiService.getUserBalance(widget.userId),
         ApiService.getSocialFund(),
-        ApiService.getCurrentWinner(widget.tontine['id']), // Nouvelle méthode API
+        ApiService.getCurrentWinner(_currentTontine['id'] as int), // Nouvelle méthode API
       ]);
 
       if (mounted) {
@@ -65,7 +85,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
 
   // --- LOGIQUE DE PAIEMENT ---
   Future<void> _handlePayment({bool isLate = false}) async {
-    double baseAmount = double.tryParse(widget.tontine['amount_to_pay']?.toString() ?? "0") ?? 0.0;
+    double baseAmount = double.tryParse(_currentTontine['amount_to_pay']?.toString() ?? "0") ?? 0.0;
     double totalToPay = isLate ? (baseAmount + latePenalty) : baseAmount;
 
     if (userBalance < totalToPay) {
@@ -78,7 +98,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
       // ✅ Correction de l'erreur "undefined_method" en attendant la MAJ de ApiService
       await ApiService.processTontinePayment(
         userId: widget.userId, 
-        tontineId: widget.tontine['id'], 
+        tontineId: _currentTontine['id'] as int, 
         amount: totalToPay,
         isLate: isLate // On signale si c'est un retard pour le fond social
       );
@@ -92,33 +112,107 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
     }
   }
 
+  // --- LOGIQUE AJOUT MEMBRE ---
+  Future<void> _addMemberFromContacts() async {
+    _showSnackBar("Bientôt : Ajout depuis le répertoire.", Colors.blue);
+    // --- Implementation future ---
+    // try {
+    //   if (await Permission.contacts.request().isGranted) {
+    //     final Contact? contact = await ContactsService.openDeviceContactPicker();
+    //     if (contact != null && contact.phones!.isNotEmpty) {
+    //       // Logique pour inviter/ajouter le contact à la tontine via API
+    //       _showSnackBar("Invitation envoyée à ${contact.displayName}", Colors.green);
+    //     }
+    //   } else {
+    //     _showSnackBar("Permission aux contacts refusée.", Colors.red);
+    //   }
+    // } catch (e) {
+    //   _showSnackBar("Erreur: $e", Colors.red);
+    // }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
       appBar: AppBar(
-        title: const Text("G-CAISSE DÉTAILS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(_currentTontine['name'] ?? "Détails", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              _buildWinnerBanner(), // Le bénéficiaire du tour
-              _buildMainCard(),
-              _buildPaymentActions(),
-              const SizedBox(height: 20),
-              _buildQuickActions(),
-              const SizedBox(height: 20),
-              _buildMembersSection(),
-            ],
-          ),
+        actions: [
+          if (widget.userId == (_currentTontine['admin_id'] as int))
+            IconButton(
+              icon: const Icon(Icons.edit_note),
+              tooltip: "Modifier la tontine",
+              onPressed: () async {
+                final updatedTontine = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (c) => EditTontineScreen(tontine: _currentTontine)),
+                );
+
+                if (updatedTontine != null && updatedTontine is Map<String, dynamic>) {
+                  setState(() {
+                    _currentTontine = updatedTontine;
+                  });
+                  _refreshData();
+                }
+              },
+            ),
+          IconButton(icon: const Icon(Icons.call), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => CallScreen(
+            callID: _currentTontine['id'].toString(),
+            userID: widget.userId.toString(),
+            userName: widget.userData['fullname'] ?? 'Utilisateur',
+          )))),
+          IconButton(icon: const Icon(Icons.map_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => RadarMapScreen(
+            tontineId: _currentTontine['id'] as int,
+            tontineName: _currentTontine['name'] ?? 'Tontine',
+            userId: widget.userId,
+          )))),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: primaryColor,
+          labelColor: primaryColor,
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(icon: Icon(Icons.info_outline), text: "Détails"),
+            Tab(icon: Icon(Icons.chat_bubble_outline), text: "Chat"),
+            Tab(icon: Icon(Icons.people_outline), text: "Social"),
+          ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // 1. Onglet Détails
+          RefreshIndicator(
+            onRefresh: _refreshData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                children: [
+                  _buildWinnerBanner(), // Le bénéficiaire du tour
+                  _buildMainCard(),
+                  _buildPaymentActions(),
+                  const SizedBox(height: 20),
+                  _buildQuickActions(),
+                  const SizedBox(height: 20),
+                  _buildMembersSection(),
+                ],
+              ),
+            ),
+          ),
+          // 2. Onglet Chat
+          ChatScreen(
+            tontineId: _currentTontine['id'],
+            userId: widget.userId,
+            userData: widget.userData,
+          ),
+          // 3. Onglet Social
+          SocialScreen(tontineId: _currentTontine['id']),
+        ],
       ),
     );
   }
@@ -165,13 +259,13 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _statTile("COTISATION", "${widget.tontine['amount_to_pay']} F"),
+              _statTile("COTISATION", "${_currentTontine['amount_to_pay']} F"),
               _statTile("FOND SOCIAL", "$socialFund F"),
             ],
           ),
           const Divider(color: Colors.white10, height: 30),
           Text("GAGNOTTE FINALE", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-          Text("${(double.parse(widget.tontine['amount_to_pay'].toString()) * members.length).toStringAsFixed(0)} FCFA",
+          Text("${(double.parse(_currentTontine['amount_to_pay'].toString()) * members.length).toStringAsFixed(0)} FCFA",
             style: TextStyle(color: primaryColor, fontSize: 26, fontWeight: FontWeight.w900)),
         ],
       ),
@@ -208,10 +302,10 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _actionIcon(Icons.gavel, "Enchères", Colors.orange, () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => AuctionScreen(tontineId: widget.tontine['id'])));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => AuctionScreen(tontineId: _currentTontine['id'])));
         }),
         _actionIcon(Icons.account_balance_wallet, "Retrait", Colors.blue, _showPayoutMethodDialog),
-        _actionIcon(Icons. help_outline, "Règles", Colors.grey, () {}),
+        _actionIcon(Icons.help_outline, "Règles", Colors.grey, () {}),
       ],
     );
   }
@@ -256,11 +350,17 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("MEMBRES DU GROUPE (${members.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("MEMBRES DU GROUPE (${members.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
+              IconButton(onPressed: _addMemberFromContacts, icon: const Icon(Icons.person_add_alt_1_outlined, color: Color(0xFFFF7900)), tooltip: "Ajouter un membre"),
+            ],
+          ),
           const SizedBox(height: 15),
           if (isLoading) const Center(child: CircularProgressIndicator())
           else ...members.map((m) => ListTile(
-            leading: CircleAvatar(backgroundColor: primaryColor.withValues(alpha: 0.1), child: Text(m['fullname']?[0] ?? "")),
+            leading: CircleAvatar(backgroundColor: primaryColor.withOpacity(0.1), child: Text(m['fullname']?[0] ?? "")),
             title: Text(m['fullname'] ?? "Anonyme"),
             subtitle: Text(m['phone'] ?? ""),
             trailing: const Icon(Icons.chevron_right, size: 16),
@@ -285,7 +385,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
       onTap: t,
       child: Column(
         children: [
-          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: c.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(i, color: c)),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: c.withOpacity(0.1), shape: BoxShape.circle), child: Icon(i, color: c)),
           const SizedBox(height: 5),
           Text(l, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
         ],
@@ -308,4 +408,14 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> {
   }
 
   void _showSnackBar(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
+}
+
+class SocialScreen extends StatelessWidget {
+  final int tontineId;
+  const SocialScreen({super.key, required this.tontineId});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text("Écran Social (à venir)")); // Placeholder
+  }
 }

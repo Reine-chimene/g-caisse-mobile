@@ -99,7 +99,7 @@ class _AuctionScreenState extends State<AuctionScreen> {
         color: cardGrey,
         borderRadius: BorderRadius.circular(15),
         // ✅ Correction : withValues au lieu de withOpacity
-        border: Border.all(color: gold.withValues(alpha: 0.3)),
+        border: Border.all(color: gold.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,7 +113,7 @@ class _AuctionScreenState extends State<AuctionScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   // ✅ Correction : withValues
-                  color: Colors.red.withValues(alpha: 0.2), 
+                  color: Colors.red.withOpacity(0.2), 
                   borderRadius: BorderRadius.circular(8)
                 ),
                 child: const Row(
@@ -198,7 +198,7 @@ class _AuctionScreenState extends State<AuctionScreen> {
                   decoration: InputDecoration(
                     hintText: "Entrez votre montant",
                     hintStyle: TextStyle(color: Colors.grey.shade700, fontSize: 16),
-                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold.withValues(alpha: 0.5))),
+                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold.withOpacity(0.5))),
                     focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold)),
                   ),
                 ),

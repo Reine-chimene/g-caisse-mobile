@@ -10,6 +10,7 @@ import 'om_momo_screen.dart';
 import 'airtime_screen.dart';
 import 'history_screen.dart';
 import 'tontine_details_screen.dart';
+import 'bill_payment_screen.dart';
 
 // =========================================================
 // 1. WRAPPER PRINCIPAL
@@ -24,6 +25,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   // Utilisation d'une fonction pour reconstruire les pages avec les données à jour
   List<Widget> _getPages() {
@@ -385,9 +391,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _serviceCard(Icons.add_business, "Créer Tontine", Colors.purple, () {
           Navigator.push(
             context, 
-            MaterialPageRoute(builder: (c) => CreateTontineScreen(userId: int.parse(widget.userData['id'].toString())))
+            MaterialPageRoute(builder: (c) => CreateTontineScreen(userId: int.tryParse(widget.userData['id'].toString()) ?? 0))
           ).then((_) => _loadData()); // Rafraîchit après création
         }),
+        _serviceCard(Icons.lightbulb_outline, "Factures", Colors.yellow.shade800, () => Navigator.push(context, MaterialPageRoute(builder: (c) => BillPaymentScreen(userData: widget.userData)))),
       ],
     );
   }

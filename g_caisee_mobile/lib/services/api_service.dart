@@ -269,6 +269,18 @@ class ApiService {
     return res.statusCode == 201 ? jsonDecode(res.body) : throw Exception("Erreur lors de la création");
   }
 
+  static Future<Map<String, dynamic>> updateTontine(int tontineId, Map<String, dynamic> data) async {
+    final res = await http.put(
+      Uri.parse('$baseUrl/tontines/$tontineId'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(data),
+    );
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body);
+    }
+    throw Exception("Échec de la mise à jour de la tontine");
+  }
+
   static Future<List<dynamic>> getGroupMessages(int tontineId) async {
     final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/messages'));
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
@@ -345,6 +357,15 @@ class ApiService {
   // ==========================================
   // 6. RADAR & ADMIN
   // ==========================================
+
+  static Future<void> updateFcmToken(int userId, String token) async {
+    // Cet endpoint est à créer sur votre backend
+    await http.put(
+      Uri.parse('$baseUrl/users/$userId/fcm-token'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"fcm_token": token}),
+    );
+  }
 
   static Future<void> updateUserLocation(int userId, double lat, double lng) async {
     await http.post(Uri.parse('$baseUrl/users/$userId/location'), headers: {"Content-Type": "application/json"},

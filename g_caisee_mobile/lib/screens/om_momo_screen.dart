@@ -235,7 +235,7 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
         color: Colors.grey.shade50, 
         borderRadius: BorderRadius.circular(15), 
         // Correction withOpacity -> withValues
-        border: Border.all(color: isOrange ? orangeColor.withValues(alpha: 0.5) : Colors.blue.withValues(alpha: 0.5)),
+        border: Border.all(color: isOrange ? orangeColor.withOpacity(0.5) : Colors.blue.withOpacity(0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
