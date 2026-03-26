@@ -96,7 +96,9 @@ class ApiService {
   static Future<int> getTrustScore(int userId) async {
     final headers = await _authHeaders();
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/trust-score'), headers: headers);
-    if (res.statusCode == 200) return jsonDecode(res.body)['trust_score'];
+    if (res.statusCode == 200) {
+      return int.tryParse(jsonDecode(res.body)['trust_score']?.toString() ?? '100') ?? 100;
+    }
     return 100;
   }
 
@@ -194,21 +196,20 @@ class ApiService {
   static Future<List<dynamic>> getTontines(int userId) async {
     try {
       final headers = await _authHeaders();
-      // On retire le paramètre user_id si ton serveur GET /api/tontines renvoie tout
       final res = await http.get(
-        Uri.parse('$baseUrl/tontines'), 
-        headers: headers
+        Uri.parse('$baseUrl/tontines?user_id=$userId'),
+        headers: headers,
       ).timeout(const Duration(seconds: 30));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         return data is List ? data : [];
       } else {
-        debugPrint("Erreur serveur tontines: \${res.statusCode}");
+        debugPrint("Erreur serveur tontines: ${res.statusCode}");
         return [];
       }
     } catch (e) {
-      debugPrint("Erreur réseau tontines: \$e");
+      debugPrint("Erreur réseau tontines: $e");
       return [];
     }
   }
@@ -296,10 +297,12 @@ class ApiService {
     final headers = await _authHeaders();
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/savings'), headers: headers);
     if (res.statusCode == 200) {
-      List data = jsonDecode(res.body);
-      double total = 0;
-      for (var goal in data) { total += double.tryParse(goal['current_amount'].toString()) ?? 0.0; }
-      return total;
+      final data = jsonDecode(res.body);
+      if (data is List) {
+        double total = 0;
+        for (var goal in data) { total += double.tryParse(goal['current_amount']?.toString() ?? '0') ?? 0.0; }
+        return total;
+      }
     }
     return 0.0;
   }

@@ -394,7 +394,7 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: color, width: 1.5),
           boxShadow: isSel
-              ? [BoxShadow(color: color.withOpacity(0.2), blurRadius: 10)]
+              ? [BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 10)]
               : [],
         ),
         child: Row(
@@ -421,7 +421,7 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
           duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
           decoration: BoxDecoration(
-            color: isSel ? color.withOpacity(0.1) : Colors.white,
+            color: isSel ? color.withValues(alpha: 0.1) : Colors.white,
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
                 color: isSel ? color : Colors.grey.shade300, width: 1.5),

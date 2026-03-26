@@ -15,7 +15,6 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
-
 subprojects {
     project.evaluationDependsOn(":app")
 }
@@ -23,7 +22,20 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
-dependencies {
-    // Assure-toi que cette ligne est présente ou similaire
-    classpath 'com.android.tools.build:gradle:7.3.0' 
+
+
+buildscript {
+    // On définit la version ici pour que Gradle ne la cherche plus ailleurs
+    val kotlin_version = "1.9.10" 
+    
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+        classpath("com.google.gms:google-services:4.3.15")
+    }
 }
+

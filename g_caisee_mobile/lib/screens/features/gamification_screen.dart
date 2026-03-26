@@ -14,6 +14,7 @@ class GamificationScreen extends StatelessWidget {
       backgroundColor: AppTheme.dark,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        foregroundColor: AppTheme.textLight,
         title: const Text('Récompenses & Badges',
             style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w700)),
       ),

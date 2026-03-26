@@ -55,14 +55,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isDeposit ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                    backgroundColor: isDeposit ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
                     child: Icon(
                       isDeposit ? Icons.arrow_downward : Icons.arrow_upward,
                       color: isDeposit ? Colors.green : Colors.red,
                     ),
                   ),
                   title: Text(tx['description'] ?? (isDeposit ? "Dépôt" : "Retrait")),
-                  subtitle: Text(DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(tx['created_at']))),
+                  subtitle: Text(tx['created_at'] != null 
+                    ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(tx['created_at'])) 
+                    : ''),
                   trailing: Text(
                     "${isDeposit ? '+' : '-'} ${tx['amount']} F",
                     style: TextStyle(

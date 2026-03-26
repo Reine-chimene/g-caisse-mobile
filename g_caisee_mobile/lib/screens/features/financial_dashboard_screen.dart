@@ -88,6 +88,7 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
       backgroundColor: AppTheme.dark,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        foregroundColor: AppTheme.textLight,
         title: const Text('Tableau de bord',
             style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w700)),
         actions: [

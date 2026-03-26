@@ -105,8 +105,18 @@ class _TontinesListScreenState extends State<TontinesListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final myId = int.tryParse(widget.userData['id'].toString()) ?? 0;
     return Scaffold(
       appBar: AppBar(title: const Text("Mes Tontines"), automaticallyImplyLeading: false, centerTitle: true),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.black,
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CreateTontineScreen(userId: myId)),
+        ).then((_) => _fetchData()),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text("CRÉER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
       body: RefreshIndicator(
         onRefresh: _fetchData,
         child: isLoading 
@@ -118,15 +128,13 @@ class _TontinesListScreenState extends State<TontinesListScreen> {
                 itemBuilder: (c, i) => ListTile(
                   leading: const CircleAvatar(backgroundColor: Color(0xFFFF7900), child: Icon(Icons.groups, color: Colors.white)),
                   title: Text(tontines[i]['name'] ?? "Groupe"),
-                  subtitle: Text("${tontines[i]['amount']} FCFA - ${tontines[i]['frequency'] ?? ''}"),
+                  subtitle: Text("${tontines[i]['amount_to_pay'] ?? tontines[i]['amount'] ?? ''} FCFA - ${tontines[i]['frequency'] ?? ''}"),
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailsScreen(
-                      tontine: tontines[i], 
-                      userData: widget.userData,
-                      userId: int.tryParse(widget.userData['id'].toString()) ?? 0,
-                    )));
-                  },
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => TontineDetailsScreen(
+                    tontine: tontines[i], 
+                    userData: widget.userData,
+                    userId: myId,
+                  ))).then((_) => _fetchData()),
                 ),
               ),
       ),
@@ -279,6 +287,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             'failed':   'Retrait échoué, votre solde a été restitué ❌',
           }[status] ?? 'Retrait initié sur $phone';
           _showSuccessDialog(statusMsg);
+          _loadData(); // Rafraîchir le solde après retrait
         }
       }
     } catch (e) {

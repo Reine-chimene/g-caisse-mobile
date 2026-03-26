@@ -16,16 +16,16 @@ class _EditTontineScreenState extends State<EditTontineScreen> {
   String _frequency = 'Mensuelle';
   bool _isLoading = false;
 
-  final List<String> _frequencies = ['Quotidienne', 'Hebdomadaire', 'Mensuelle'];
+  final List<String> _frequencies = ['journalier', 'hebdo', 'mensuel'];
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.tontine['name'] ?? '');
     _amountController = TextEditingController(text: widget.tontine['amount_to_pay']?.toString() ?? '');
-    _frequency = widget.tontine['frequency'] ?? 'Mensuelle';
+    _frequency = widget.tontine['frequency'] ?? 'mensuel';
     if (!_frequencies.contains(_frequency)) {
-      _frequency = 'Mensuelle';
+      _frequency = 'mensuel';
     }
   }
 
@@ -91,7 +91,11 @@ class _EditTontineScreenState extends State<EditTontineScreen> {
             DropdownButtonFormField<String>(
               value: _frequency,
               decoration: const InputDecoration(labelText: "Fréquence des cotisations", border: OutlineInputBorder()),
-              items: _frequencies.map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+              items: const [
+                DropdownMenuItem(value: 'journalier', child: Text("Journalière")),
+                DropdownMenuItem(value: 'hebdo',      child: Text("Hebdomadaire")),
+                DropdownMenuItem(value: 'mensuel',    child: Text("Mensuelle")),
+              ],
               onChanged: (v) => setState(() => _frequency = v!),
             ),
             const SizedBox(height: 40),

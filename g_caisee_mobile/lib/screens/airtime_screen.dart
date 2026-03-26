@@ -167,10 +167,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     }
   }
 
-  Future<void> _pollStatus() async {}
-
-  void _showPinWaitingDialog() {}
-
   void _showSuccessDialog() {
     final serviceLabel = _rechargeType == 'Crédit'
         ? 'Recharge Crédit'
@@ -449,27 +445,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   color: color,
                   fontWeight: bold ? FontWeight.bold : FontWeight.w600,
                   fontSize: bold ? 16 : 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _step(String number, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 12,
-            backgroundColor: _orange,
-            child: Text(number,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );

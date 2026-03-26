@@ -37,6 +37,7 @@ class _QrCodeScreenState extends State<QrCodeScreen>
       backgroundColor: AppTheme.dark,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        foregroundColor: AppTheme.textLight,
         title: const Text('QR Code Paiement',
             style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w700)),
         bottom: TabBar(

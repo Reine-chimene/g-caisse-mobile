@@ -65,8 +65,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ]);
       if (mounted) {
         setState(() {
-          _balance    = (results[0] as num).toDouble();
-          _trustScore = (results[1] as num).toInt();
+          _balance    = results[0] as double;
+          _trustScore = results[1] as int;
           _isLoading  = false;
         });
       }
@@ -394,7 +394,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         title: Text(title, style: TextStyle(color: txtColor, fontSize: 14, fontWeight: FontWeight.w500)),
         trailing: CupertinoSwitch(
-          activeColor: AppTheme.primary,
+          activeTrackColor: AppTheme.primary,
           value: value,
           onChanged: onChanged,
         ),

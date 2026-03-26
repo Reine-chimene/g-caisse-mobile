@@ -45,8 +45,7 @@ class _TontineListScreenState extends State<TontineListScreen> {
       final data = await ApiService.getTontines(widget.userId); 
       if (mounted) {
         setState(() {
-          // Correction du check de type pour éviter le warning "Unnecessary type check"
-          tontines = (data is List) ? data : [];
+          tontines = data;
           isLoading = false;
         });
       }

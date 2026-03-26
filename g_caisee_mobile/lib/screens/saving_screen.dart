@@ -168,10 +168,11 @@ class _SavingScreenState extends State<SavingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       appBar: AppBar(
-        title: const Text("MON COFFRE-FORT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
+        title: const Text("MON COFFRE-FORT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        foregroundColor: Colors.white,
       ),
       body: isLoading 
         ? Center(child: CircularProgressIndicator(color: gold)) 

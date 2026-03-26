@@ -163,6 +163,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       backgroundColor: AppTheme.dark,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        foregroundColor: AppTheme.textLight,
         title: Row(
           children: [
             Container(
