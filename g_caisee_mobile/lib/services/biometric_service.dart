@@ -1,6 +1,4 @@
 import 'package:local_auth/local_auth.dart';
-import 'package:local_auth_android/local_auth_android.dart';
-import 'package:local_auth_darwin/local_auth_darwin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service d'authentification biométrique (empreinte / Face ID)
@@ -34,15 +32,6 @@ class BiometricService {
     try {
       return await _auth.authenticate(
         localizedReason: reason,
-        authMessages: const [
-          AndroidAuthMessages(
-            signInTitle: 'G-Caisse',
-            cancelButton: 'Annuler',
-          ),
-          IOSAuthMessages(
-            cancelButton: 'Annuler',
-          ),
-        ],
       );
     } catch (_) {
       return false;

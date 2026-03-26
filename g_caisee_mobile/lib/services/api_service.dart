@@ -115,10 +115,20 @@ class ApiService {
 
   static Future<Map<String, dynamic>> initiatePayment(int userId, String phone, double amount, {String? name}) async {
     final headers = await _authHeaders();
-    final response = await http.post(Uri.parse('$baseUrl/deposit'), headers: headers, body: jsonEncode({'user_id': userId, 'phone': phone, 'amount': amount, 'email': "user$userId@gcaisse.com", 'name': name ?? "Membre G-Caisse"}));
+    final response = await http.post(
+      Uri.parse('$baseUrl/deposit'),
+      headers: headers,
+      body: jsonEncode({
+        'user_id': userId,
+        'phone': phone,
+        'amount': amount,
+        'email': "user$userId@gcaisse.com",
+        'name': name ?? "Membre G-Caisse",
+      }),
+    ).timeout(const Duration(seconds: 30));
     final body = jsonDecode(response.body);
-    if (response.statusCode == 200) return body;
-    throw Exception(body['error'] ?? body['message'] ?? 'Erreur dépôt');
+    if (response.statusCode == 200 && body['payment_url'] != null) return body;
+    throw Exception(body['details'] ?? body['error'] ?? body['message'] ?? 'Erreur dépôt');
   }
 
   static Future<Map<String, dynamic>> processPayout({required int userId, required double amount, required String phone, required String name, String? channel}) async {
@@ -220,6 +230,76 @@ class ApiService {
     if (res.statusCode != 200) throw Exception("Échec paiement tontine");
   }
 
+  // Payer le fond de caisse
+  static Future<void> payCaisseFund({required int userId, required int tontineId, required double amount}) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/payments/caisse'), headers: headers,
+        body: jsonEncode({"user_id": userId, "tontine_id": tontineId, "amount": amount}));
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur fond de caisse');
+  }
+
+  // Déclencher le débit automatique (admin seulement)
+  static Future<Map<String, dynamic>> autoDebit(int tontineId) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/tontines/$tontineId/auto-debit'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur débit automatique');
+  }
+
+  // Statut d'un membre dans une tontine
+  static Future<Map<String, dynamic>> getMemberStatus(int tontineId, int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/member-status/$userId'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {};
+  }
+
+  // Classement des membres (qui reçoit quel mois)
+  static Future<List<dynamic>> getTontineSchedule(int tontineId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/schedule'), headers: headers);
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  // Générer le classement (admin)
+  static Future<void> generateSchedule(int tontineId) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/tontines/$tontineId/schedule'), headers: headers);
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur classement');
+  }
+
+  // Total de la cagnotte du cycle actuel
+  static Future<Map<String, dynamic>> getTontinesCagnotte(int tontineId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/cagnotte'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {};
+  }
+
+  // Envoyer la cagnotte au bénéficiaire (admin)
+  static Future<Map<String, dynamic>> sendCagnotte({
+    required int tontineId,
+    required int beneficiaryId,
+    required String payoutMethod,
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/tontines/$tontineId/payout'),
+      headers: headers,
+      body: jsonEncode({'beneficiary_id': beneficiaryId, 'payout_method': payoutMethod}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur envoi cagnotte');
+  }
+
+  // Préparer les rappels WhatsApp
+  static Future<Map<String, dynamic>> getWhatsAppReminders(int tontineId) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/tontines/$tontineId/whatsapp-reminder'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception('Erreur rappels');
+  }
+
   static Future<Map<String, dynamic>?> getCurrentWinner(int tontineId) async {
     final headers = await _authHeaders();
     final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/winner'), headers: headers);
@@ -232,26 +312,26 @@ class ApiService {
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  static Future<Map<String, dynamic>> createTontine(String name, int adminId, String freq, double amount, double commission) async {
+  static Future<Map<String, dynamic>> createTontine(
+    String name, int adminId, String freq, double amount, double commission, {
+    String deadlineTime = '23:59',
+    int deadlineDay = 28,
+    bool hasCaisseFund = false,
+    double caisseFundAmount = 0,
+  }) async {
     final headers = await _authHeaders();
     final res = await http.post(
       Uri.parse('$baseUrl/tontines'),
       headers: headers,
       body: jsonEncode({
-        "name": name,
-        "admin_id": adminId,
-        "frequency": freq,
-        "amount": amount,
-        "commission_rate": commission
+        "name": name, "admin_id": adminId, "frequency": freq,
+        "amount": amount, "commission_rate": commission,
+        "deadline_time": deadlineTime, "deadline_day": deadlineDay,
+        "has_caisse_fund": hasCaisseFund, "caisse_fund_amount": caisseFundAmount,
       }),
     ).timeout(const Duration(seconds: 30));
-    
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      return jsonDecode(res.body);
-    } else {
-      final error = jsonDecode(res.body);
-      throw Exception(error['message'] ?? "Erreur lors de la création");
-    }
+    if (res.statusCode == 201 || res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception(jsonDecode(res.body)['message'] ?? "Erreur lors de la création");
   }
 
   static Future<Map<String, dynamic>> updateTontine(int tontineId, Map<String, dynamic> data) async {
@@ -334,9 +414,46 @@ class ApiService {
     return res.statusCode == 200 ? jsonDecode(res.body) : [];
   }
 
-  static Future<void> makeDonation(int eventId, double amount) async {
+  // Événements sociaux d'une tontine spécifique
+  static Future<List<dynamic>> getTontineSocialEvents(int tontineId) async {
     final headers = await _authHeaders();
-    await http.post(Uri.parse('$baseUrl/social/donate'), headers: headers, body: jsonEncode({"event_id": eventId, "amount": amount}));
+    final res = await http.get(Uri.parse('$baseUrl/tontines/$tontineId/social/events'), headers: headers);
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  // Créer un événement social dans une tontine
+  static Future<Map<String, dynamic>> createSocialEvent({
+    required int tontineId,
+    required int createdBy,
+    required String eventType,
+    required String description,
+    required double targetAmount,
+    String beneficiaryName = '',
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/tontines/$tontineId/social/events'),
+      headers: headers,
+      body: jsonEncode({
+        'event_type': eventType,
+        'description': description,
+        'target_amount': targetAmount,
+        'created_by': createdBy,
+        'beneficiary_name': beneficiaryName,
+      }),
+    );
+    if (res.statusCode == 201) return jsonDecode(res.body);
+    throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur création événement');
+  }
+
+  static Future<void> makeDonation(int eventId, double amount, int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/social/donate'),
+      headers: headers,
+      body: jsonEncode({"event_id": eventId, "amount": amount, "user_id": userId}),
+    );
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? 'Erreur don');
   }
 
   // ==========================================

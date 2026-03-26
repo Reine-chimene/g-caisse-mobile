@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class SocialScreen extends StatefulWidget {
-  const SocialScreen({super.key});
+  final int userId;
+  const SocialScreen({super.key, this.userId = 0});
 
   @override
   State<SocialScreen> createState() => _SocialScreenState();
 }
-
 class _SocialScreenState extends State<SocialScreen> {
   final Color gold = const Color(0xFFD4AF37);
   final Color cardGrey = const Color(0xFF1E1E1E);
@@ -304,7 +304,7 @@ class _SocialScreenState extends State<SocialScreen> {
                         if (amount > 0) {
                           setModalState(() => isProcessing = true);
                           try {
-                            await ApiService.makeDonation(int.parse(event['id'].toString()), amount);
+                            await ApiService.makeDonation(int.parse(event['id'].toString()), amount, widget.userId);
                             if (context.mounted) {
                               Navigator.pop(context);
                               _fetchRealData(); 
