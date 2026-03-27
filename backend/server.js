@@ -171,6 +171,17 @@ const initDb = async () => {
             payout_method TEXT DEFAULT 'wallet',
             paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+        // Commissions de la plateforme (2% prélevés lors du payout)
+        await db.query(`CREATE TABLE IF NOT EXISTS public.platform_commissions (
+            id SERIAL PRIMARY KEY,
+            tontine_id INTEGER REFERENCES public.tontines(id),
+            payout_id INTEGER REFERENCES public.tontine_payouts(id),
+            gross_amount DECIMAL NOT NULL,
+            commission_rate DECIMAL NOT NULL,
+            commission_amount DECIMAL NOT NULL,
+            net_amount DECIMAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
         // Ajouter les colonnes manquantes si la table existe déjà
         await db.query(`ALTER TABLE public.tontines ADD COLUMN IF NOT EXISTS deadline_time TEXT DEFAULT '23:59'`);
         await db.query(`ALTER TABLE public.tontines ADD COLUMN IF NOT EXISTS deadline_day INTEGER DEFAULT 28`);
@@ -766,11 +777,16 @@ app.post('/api/tontines/:id/payout', authenticate, requireFields('beneficiary_id
         const total = parseFloat(cagnotte.rows[0].total);
         if (total <= 0) return res.status(400).json({ message: "Aucune cotisation collectée ce mois" });
 
+        // Calcul de la commission plateforme
+        const commissionRate = parseFloat(tontine.rows[0].commission_rate) || 2;
+        const commissionAmount = Math.round(total * commissionRate / 100);
+        const netAmount = total - commissionAmount;
+
         await db.query('BEGIN');
 
-        // Créditer le bénéficiaire si paiement interne
+        // Créditer le bénéficiaire avec le montant net (après commission)
         if (payout_method === 'wallet') {
-            await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [total, beneficiary_id]);
+            await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [netAmount, beneficiary_id]);
         }
 
         // Enregistrer le paiement
@@ -780,26 +796,32 @@ app.post('/api/tontines/:id/payout', authenticate, requireFields('beneficiary_id
         );
         const cycleNum = cycleResult.rows[0].next;
 
-        await db.query(`
+        const payoutResult = await db.query(`
             INSERT INTO public.tontine_payouts (tontine_id, beneficiary_id, cycle_number, total_amount, payout_method)
-            VALUES ($1,$2,$3,$4,$5)
-        `, [tontineId, beneficiary_id, cycleNum, total, payout_method]);
+            VALUES ($1,$2,$3,$4,$5) RETURNING id
+        `, [tontineId, beneficiary_id, cycleNum, netAmount, payout_method]);
+
+        // Enregistrer la commission
+        await db.query(`
+            INSERT INTO public.platform_commissions (tontine_id, payout_id, gross_amount, commission_rate, commission_amount, net_amount)
+            VALUES ($1,$2,$3,$4,$5,$6)
+        `, [tontineId, payoutResult.rows[0].id, total, commissionRate, commissionAmount, netAmount]);
 
         // Marquer le bénéficiaire comme ayant reçu
         await db.query(`
             UPDATE public.tontine_schedule
             SET has_received=true, received_at=NOW(), payout_amount=$1
             WHERE tontine_id=$2 AND user_id=$3 AND has_received=false
-        `, [total, tontineId, beneficiary_id]);
+        `, [netAmount, tontineId, beneficiary_id]);
 
         // Transaction pour le bénéficiaire
         await db.query(`
             INSERT INTO public.transactions (user_id, amount, type, status, description)
-            VALUES ($1,$2,'tontine_payout','completed','Cagnotte tontine reçue')
-        `, [beneficiary_id, total]);
+            VALUES ($1,$2,'tontine_payout','completed','Cagnotte tontine reçue (après commission ${commissionRate}%)')
+        `, [beneficiary_id, netAmount]);
 
         await db.query('COMMIT');
-        res.json({ message: "Cagnotte envoyée avec succès", total, beneficiary_id, payout_method });
+        res.json({ message: "Cagnotte envoyée avec succès", total: netAmount, gross: total, commission: commissionAmount, commission_rate: commissionRate, beneficiary_id, payout_method });
     } catch (err) {
         await db.query('ROLLBACK').catch(() => {});
         console.error("Erreur payout:", err.message);
@@ -1227,9 +1249,24 @@ app.post('/api/social/donate', authenticate, requireFields('event_id', 'amount',
 // GET /api/admin/stats
 app.get('/api/admin/stats', authenticate, async (req, res) => {
     try {
-        const fees = await db.query("SELECT COALESCE(SUM(amount * 0.02),0) as total_fees FROM public.transactions WHERE status='completed'");
+        // Commissions réellement collectées
+        const fees = await db.query("SELECT COALESCE(SUM(commission_amount),0) as total_fees FROM public.platform_commissions");
         const volume = await db.query("SELECT COALESCE(SUM(amount),0) as total_volume FROM public.transactions WHERE status='completed'");
-        res.json({ total_fees: fees.rows[0].total_fees, total_volume: volume.rows[0].total_volume });
+        const users = await db.query("SELECT COUNT(*) as user_count FROM public.users");
+        const tontines = await db.query("SELECT COUNT(*) as tontine_count FROM public.tontines WHERE status='active'");
+        const commissions = await db.query(`
+            SELECT pc.*, t.name as tontine_name 
+            FROM public.platform_commissions pc
+            LEFT JOIN public.tontines t ON t.id = pc.tontine_id
+            ORDER BY pc.created_at DESC LIMIT 20
+        `);
+        res.json({
+            total_fees: fees.rows[0].total_fees,
+            total_volume: volume.rows[0].total_volume,
+            user_count: users.rows[0].user_count,
+            tontine_count: tontines.rows[0].tontine_count,
+            recent_commissions: commissions.rows
+        });
     } catch (err) {
         res.status(500).json({ message: "Erreur serveur" });
     }

@@ -63,7 +63,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               );
             }
 
-            final stats = snapshot.data ?? {"total_fees": 0, "total_volume": 0, "user_count": 0};
+            final stats = snapshot.data ?? {"total_fees": 0, "total_volume": 0, "user_count": 0, "tontine_count": 0, "recent_commissions": []};
+            final commissions = (stats['recent_commissions'] as List?) ?? [];
 
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -98,10 +99,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       const SizedBox(width: 15),
                       Expanded(
                         child: _statCard(
+                          "TONTINES ACTIVES", 
+                          "${stats['tontine_count'] ?? 0}", 
+                          Icons.groups_3_rounded, 
+                          Colors.blue
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _statCard(
                           "FLUX TOTAL", 
                           currencyFormat.format(stats['total_volume']), 
                           Icons.insights_rounded, 
-                          Colors.blue
+                          Colors.purple
                         ),
                       ),
                     ],
@@ -132,6 +146,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     gold,
                     () {}
                   ),
+
+                  if (commissions.isNotEmpty) ...[
+                    const SizedBox(height: 40),
+                    _buildHeader("Commissions récentes (2%)"),
+                    const SizedBox(height: 15),
+                    ...commissions.map((c) => _commissionTile(c)),
+                  ],
+
+                  const SizedBox(height: 20),
                 ],
               ),
             );
@@ -199,6 +222,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         trailing: const Icon(Icons.arrow_forward_ios, size: 14),
         onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _commissionTile(Map<String, dynamic> c) {
+    final amount = double.tryParse(c['commission_amount']?.toString() ?? '0') ?? 0;
+    final gross = double.tryParse(c['gross_amount']?.toString() ?? '0') ?? 0;
+    final tontineName = c['tontine_name'] ?? 'Tontine';
+    final date = c['created_at']?.toString().substring(0, 10) ?? '';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+          child: const Icon(Icons.monetization_on_rounded, color: Colors.green, size: 22),
+        ),
+        title: Text(currencyFormat.format(amount), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+        subtitle: Text("$tontineName — sur ${currencyFormat.format(gross)}", style: const TextStyle(fontSize: 11)),
+        trailing: Text(date, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
       ),
     );
   }
