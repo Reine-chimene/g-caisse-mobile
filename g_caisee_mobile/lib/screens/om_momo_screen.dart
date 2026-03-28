@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class OmMomoScreen extends StatefulWidget {
@@ -10,140 +11,156 @@ class OmMomoScreen extends StatefulWidget {
 }
 
 class _OmMomoScreenState extends State<OmMomoScreen> {
-  final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _senderPhoneController = TextEditingController();
-  final TextEditingController _receiverPhoneController = TextEditingController();
-  
+  final _amountController = TextEditingController();
+  final _senderPhoneController = TextEditingController();
+  final _receiverPhoneController = TextEditingController();
+
   String _senderOperator = 'Orange Money';
   String _receiverOperator = 'MTN MoMo';
   bool _isLoading = false;
-  String _recipientName = ""; 
 
   final Color orangeColor = const Color(0xFFFF7900);
 
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _senderPhoneController.dispose();
+    _receiverPhoneController.dispose();
+    super.dispose();
+  }
+
+  String _opToNotchCode(String op) => op.contains('Orange') ? 'cm.orange' : 'cm.mtn';
+
   void _switchOperators() {
     setState(() {
-      String tempOp = _senderOperator;
+      final tempOp = _senderOperator;
       _senderOperator = _receiverOperator;
       _receiverOperator = tempOp;
 
-      String tempPhone = _senderPhoneController.text;
+      final tempPhone = _senderPhoneController.text;
       _senderPhoneController.text = _receiverPhoneController.text;
       _receiverPhoneController.text = tempPhone;
     });
   }
 
-  void _startVerification() async {
-    if (_amountController.text.isEmpty || _receiverPhoneController.text.isEmpty) {
-      _showSnackBar("Veuillez remplir le montant et le numéro", Colors.red);
+  Future<void> _sendMoney() async {
+    final senderPhone = _senderPhoneController.text.trim();
+    final receiverPhone = _receiverPhoneController.text.trim();
+    final amountText = _amountController.text.trim();
+
+    if (senderPhone.isEmpty || receiverPhone.isEmpty || amountText.isEmpty) {
+      _showSnackBar("Remplis tous les champs", Colors.red);
+      return;
+    }
+    final amount = double.tryParse(amountText);
+    if (amount == null || amount < 100) {
+      _showSnackBar("Montant minimum : 100 FCFA", Colors.red);
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      String opForApi = _receiverOperator.contains('Orange') ? 'orange' : 'mtn';
-      
-      // Note : Cette erreur "undefined_method" disparaîtra quand tu mettras à jour ApiService
-      final name = await ApiService.getRecipientName(
-        _receiverPhoneController.text.trim(), 
-        opForApi
+      final userId = int.tryParse(widget.userData?['id']?.toString() ?? '0') ?? 0;
+      final result = await ApiService.initiateDirectTransfer(
+        senderId: userId,
+        senderPhone: senderPhone,
+        senderOperator: _opToNotchCode(_senderOperator),
+        receiverPhone: receiverPhone,
+        receiverOperator: _opToNotchCode(_receiverOperator),
+        amount: amount,
       );
 
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _recipientName = name;
-        });
-        _showConfirmationSheet();
+      final paymentUrl = result['payment_url'];
+      if (paymentUrl != null) {
+        final uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+          // Vérifier le statut après paiement
+          if (mounted) _showWaitingDialog(result['reference']);
+        } else {
+          _showSnackBar("Impossible d'ouvrir la page de paiement", Colors.red);
+        }
+      } else {
+        _showSnackBar("URL de paiement non reçue", Colors.red);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        _showSnackBar("Bénéficiaire introuvable", Colors.red);
-      }
+      if (mounted) _showSnackBar(e.toString().replaceAll('Exception:', '').trim(), Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _executeFinalTransfer() async {
-    setState(() => _isLoading = true);
-    try {
-      // Mapping correct vers les channels Notch Pay
-      String notchChannel = _senderOperator.contains('Orange') ? 'cm.orange' : 'cm.mtn';
-      final result = await ApiService.processDirectTransfer(
-        senderId: widget.userData?['id'] ?? 0,
-        receiverPhone: _receiverPhoneController.text.trim(),
-        amount: double.parse(_amountController.text),
-        operator: notchChannel,
-      );
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-        _amountController.clear();
-        _receiverPhoneController.clear();
-        _showSuccessDialog(result['message'] ?? "Transfert réussi");
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        _showSnackBar(e.toString().replaceAll("Exception: ", ""), Colors.red);
-      }
-    }
-  }
-
-  void _showConfirmationSheet() {
-    showModalBottomSheet(
+  void _showWaitingDialog(String reference) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const CircularProgressIndicator(color: Color(0xFFFF7900)),
             const SizedBox(height: 20),
-            const Text("CONFIRMER LE TRANSFERT", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-            const SizedBox(height: 20),
-            // Correction FontWeight.black -> FontWeight.w900
-            Text("${_amountController.text} FCFA", style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
-            const Icon(Icons.arrow_downward, color: Colors.blue, size: 30),
+            const Text("En attente du paiement...", style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            Text(_recipientName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
-            Text("Vers le numéro : ${_receiverPhoneController.text}", style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-                onPressed: () {
-                  Navigator.pop(context);
-                  _executeFinalTransfer();
-                },
-                child: const Text("OUI, ENVOYER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("ANNULER", style: TextStyle(color: Colors.red))),
+            Text("Réf: $reference", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 15),
+            const Text("Paie via Orange Money ou MTN MoMo dans le navigateur, puis reviens ici.",
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("FERMER"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: orangeColor),
+            onPressed: () async {
+              try {
+                final status = await ApiService.getDirectTransferStatus(reference);
+                if (status['status'] == 'completed') {
+                  Navigator.pop(ctx);
+                  _showSuccessDialog("Transfert effectué avec succès !");
+                } else if (status['status'] == 'failed') {
+                  Navigator.pop(ctx);
+                  _showSnackBar("Le transfert a échoué", Colors.red);
+                } else {
+                  _showSnackBar("Paiement en attente. Termine le paiement d'abord.", Colors.orange);
+                }
+              } catch (e) {
+                _showSnackBar("Erreur de vérification", Colors.red);
+              }
+            },
+            child: const Text("J'AI PAYÉ", style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }
 
-  void _showSnackBar(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
+  void _showSnackBar(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color, behavior: SnackBarBehavior.floating));
+  }
 
   void _showSuccessDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Icon(Icons.check_circle, color: Colors.green, size: 60),
         content: Text(message, textAlign: TextAlign.center),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: orangeColor, minimumSize: const Size(double.infinity, 45)),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _amountController.clear();
+              _receiverPhoneController.clear();
+            },
             child: const Text("OK", style: TextStyle(color: Colors.white)),
           )
         ],
@@ -156,8 +173,8 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Transfert OM ↔ MoMo", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
-        backgroundColor: orangeColor, 
+        title: const Text("Transfert OM ↔ MoMo", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        backgroundColor: orangeColor,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -167,7 +184,7 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
           children: [
             _buildAmountField(),
             const SizedBox(height: 30),
-            _buildOperatorCard("DEPUIS MON COMPTE", _senderOperator, _senderPhoneController, (val) {
+            _buildOperatorCard("DEPUIS", _senderOperator, _senderPhoneController, (val) {
               setState(() {
                 _senderOperator = val!;
                 if (_senderOperator == _receiverOperator) {
@@ -182,7 +199,7 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                 onPressed: _switchOperators,
               ),
             ),
-            _buildOperatorCard("VERS LE DESTINATAIRE", _receiverOperator, _receiverPhoneController, (val) {
+            _buildOperatorCard("VERS", _receiverOperator, _receiverPhoneController, (val) {
               setState(() {
                 _receiverOperator = val!;
                 if (_receiverOperator == _senderOperator) {
@@ -190,22 +207,40 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                 }
               });
             }),
-            const SizedBox(height: 40),
+            const SizedBox(height: 15),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(child: Text(
+                    "Tu seras redirigé vers Orange Money ou MTN MoMo pour payer. L'argent sera envoyé directement au destinataire.",
+                    style: TextStyle(fontSize: 12, color: Colors.blue))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: orangeColor, 
+                  backgroundColor: orangeColor,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 ),
-                onPressed: _isLoading ? null : _startVerification,
-                child: _isLoading 
-                  ? const CircularProgressIndicator(color: Colors.white) 
-                  : const Text("VÉRIFIER ET ENVOYER", 
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                onPressed: _isLoading ? null : _sendMoney,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("ENVOYER",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -219,7 +254,7 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
       textAlign: TextAlign.center,
       style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
       decoration: InputDecoration(
-        labelText: "Montant à transférer",
+        labelText: "Montant à envoyer",
         suffixText: "FCFA",
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         filled: true,
@@ -228,14 +263,13 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
     );
   }
 
-  Widget _buildOperatorCard(String label, String op, TextEditingController ctrl, Function(String?) onCh) {
+  Widget _buildOperatorCard(String label, String op, TextEditingController ctrl, Function(String?) onChanged) {
     bool isOrange = op.contains('Orange');
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50, 
-        borderRadius: BorderRadius.circular(15), 
-        // Correction withOpacity -> withValues
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: isOrange ? orangeColor.withValues(alpha: 0.5) : Colors.blue.withValues(alpha: 0.5)),
       ),
       child: Column(
@@ -249,27 +283,27 @@ class _OmMomoScreenState extends State<OmMomoScreen> {
                 value: op,
                 underline: const SizedBox(),
                 items: ['Orange Money', 'MTN MoMo'].map((e) => DropdownMenuItem(
-                  value: e, 
+                  value: e,
                   child: Text(e, style: TextStyle(
-                    color: e.contains('Orange') ? Colors.orange.shade800 : Colors.blue.shade800, 
-                    fontWeight: FontWeight.bold
-                  ))
+                    color: e.contains('Orange') ? Colors.orange.shade800 : Colors.blue.shade800,
+                    fontWeight: FontWeight.bold,
+                  )),
                 )).toList(),
-                onChanged: onCh,
+                onChanged: onChanged,
               ),
               const SizedBox(width: 15),
               Expanded(
                 child: TextField(
-                  controller: ctrl, 
-                  keyboardType: TextInputType.phone, 
+                  controller: ctrl,
+                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    hintText: "6XX XXX XXX", 
+                    hintText: "6XX XXX XXX",
                     border: InputBorder.none,
-                  )
+                  ),
                 ),
               ),
             ],
-          )
+          ),
         ],
       ),
     );

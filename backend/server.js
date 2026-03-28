@@ -182,6 +182,19 @@ const initDb = async () => {
             net_amount DECIMAL NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+        // Transferts en attente de paiement (OM↔MoMo direct)
+        await db.query(`CREATE TABLE IF NOT EXISTS public.pending_transfers (
+            id SERIAL PRIMARY KEY,
+            sender_id INTEGER REFERENCES public.users(id),
+            sender_phone TEXT NOT NULL,
+            sender_operator TEXT NOT NULL,
+            receiver_phone TEXT NOT NULL,
+            receiver_operator TEXT NOT NULL,
+            amount DECIMAL NOT NULL,
+            payment_reference TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
         // Ajouter les colonnes manquantes si la table existe déjà
         await db.query(`ALTER TABLE public.tontines ADD COLUMN IF NOT EXISTS deadline_time TEXT DEFAULT '23:59'`);
         await db.query(`ALTER TABLE public.tontines ADD COLUMN IF NOT EXISTS deadline_day INTEGER DEFAULT 28`);
@@ -1310,6 +1323,64 @@ app.get('/api/admin/stats', authenticate, async (req, res) => {
 });
 
 // ==========================================
+// TRANSFERT DIRECT OM/MoMo
+// ==========================================
+
+// POST /api/transfer/direct — Initie un transfert direct via Notch Pay
+app.post('/api/transfer/direct', authenticate, requireFields('sender_id', 'sender_phone', 'sender_operator', 'receiver_phone', 'receiver_operator', 'amount'), async (req, res) => {
+    const { sender_id, sender_phone, sender_operator, receiver_phone, receiver_operator, amount } = req.body;
+    try {
+        if (!process.env.NOTCH_PUBLIC_KEY) {
+            return res.status(500).json({ message: "Configuration paiement manquante" });
+        }
+        const reference = `XFER_${sender_id}_${Date.now()}`;
+
+        // Enregistrer le transfert en attente
+        await db.query(`
+            INSERT INTO public.pending_transfers 
+              (sender_id, sender_phone, sender_operator, receiver_phone, receiver_operator, amount, payment_reference)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [sender_id, sender_phone, sender_operator, receiver_phone, receiver_operator, amount, reference]);
+
+        // Initier le paiement Notch Pay (l'utilisateur paie depuis son OM/MoMo)
+        const response = await axios.post('https://api.notchpay.co/payments', {
+            amount,
+            currency: 'XAF',
+            reference,
+            callback: process.env.PAYMENT_CALLBACK_URL,
+            customer: { name: `User ${sender_id}`, email: `user${sender_id}@g-caisse.com`, phone: sender_phone }
+        }, {
+            headers: {
+                'Authorization': process.env.NOTCH_PUBLIC_KEY,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = response.data;
+        const paymentUrl = data?.transaction?.payment_url || data?.authorization_url || data?.payment_url;
+        if (!paymentUrl) {
+            return res.status(400).json({ message: "URL de paiement non reçue", details: data });
+        }
+
+        res.json({ success: true, payment_url: paymentUrl, reference });
+    } catch (err) {
+        console.error('[TRANSFER DIRECT ERROR]', err.response?.data || err.message);
+        res.status(400).json({ message: err.response?.data?.message || "Erreur initiation transfert" });
+    }
+});
+
+// GET /api/transfer/direct/status/:ref — Vérifier le statut d'un transfert
+app.get('/api/transfer/direct/status/:ref', authenticate, async (req, res) => {
+    try {
+        const result = await db.query("SELECT * FROM public.pending_transfers WHERE payment_reference=$1", [req.params.ref]);
+        if (result.rows.length === 0) return res.status(404).json({ message: "Transfert non trouvé" });
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// ==========================================
 // WEBHOOK NOTCH PAY
 // ==========================================
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -1323,20 +1394,58 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const event = JSON.parse(rawBody);
     if (event.type === 'payment.complete') {
         const { amount, reference } = event.data;
-        const userId = reference.split('_')[1];
-        if (reference.startsWith('DEP_') && userId) {
+
+        // Dépôt classique (balance G-Caisse)
+        if (reference.startsWith('DEP_')) {
+            const userId = reference.split('_')[1];
+            if (userId) {
+                try {
+                    await db.query('BEGIN');
+                    await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [amount, userId]);
+                    await db.query(
+                        "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'deposit','completed',$3,'Dépôt Notch Pay')",
+                        [userId, amount, reference]
+                    );
+                    await db.query('COMMIT');
+                    return res.status(200).send('OK');
+                } catch (err) {
+                    await db.query('ROLLBACK').catch(() => {});
+                    return res.status(500).send('DB Error');
+                }
+            }
+        }
+
+        // Transfert direct OM↔MoMo
+        if (reference.startsWith('XFER_')) {
             try {
-                await db.query('BEGIN');
-                await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [amount, userId]);
+                const pending = await db.query("SELECT * FROM public.pending_transfers WHERE payment_reference=$1 AND status='pending'", [reference]);
+                if (pending.rows.length === 0) return res.status(200).send('Already processed');
+                const pt = pending.rows[0];
+
+                // Envoyer l'argent au destinataire via Notch Pay
+                const notchChannel = pt.receiver_operator === 'cm.orange' ? 'cm.orange' : 'cm.mtn';
+                await axios.post('https://api.notchpay.co/transfers', {
+                    amount: pt.amount, currency: 'XAF', reference: `PAY_${reference}`,
+                    destination: { channel: notchChannel, number: pt.receiver_phone, name: 'G-Caisse Transfer' }
+                }, {
+                    headers: {
+                        'Authorization': process.env.NOTCH_PUBLIC_KEY,
+                        'X-Grant': process.env.NOTCH_PRIVATE_KEY,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                // Marquer comme complété
+                await db.query("UPDATE public.pending_transfers SET status='completed' WHERE id=$1", [pt.id]);
                 await db.query(
-                    "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'deposit','completed',$3,'Dépôt Notch Pay')",
-                    [userId, amount, reference]
+                    "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'transfer_out','completed',$3,$4)",
+                    [pt.sender_id, pt.amount, reference, `Transfert ${pt.sender_operator} → ${pt.receiver_operator} vers ${pt.receiver_phone}`]
                 );
-                await db.query('COMMIT');
                 return res.status(200).send('OK');
             } catch (err) {
-                await db.query('ROLLBACK').catch(() => {});
-                return res.status(500).send('DB Error');
+                console.error('[WEBHOOK XFER ERROR]', err.response?.data || err.message);
+                await db.query("UPDATE public.pending_transfers SET status='failed' WHERE payment_reference=$1", [reference]).catch(() => {});
+                return res.status(500).send('Transfer Error');
             }
         }
     }

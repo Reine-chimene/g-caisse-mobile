@@ -153,6 +153,34 @@ class ApiService {
     throw Exception(body['message'] ?? "Échec transfert");
   }
 
+  static Future<Map<String, dynamic>> initiateDirectTransfer({
+    required int senderId, required String senderPhone, required String senderOperator,
+    required String receiverPhone, required String receiverOperator, required double amount,
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/transfer/direct'),
+      headers: headers,
+      body: jsonEncode({
+        "sender_id": senderId, "sender_phone": senderPhone,
+        "sender_operator": senderOperator,
+        "receiver_phone": receiverPhone,
+        "receiver_operator": receiverOperator,
+        "amount": amount,
+      }),
+    ).timeout(const Duration(seconds: 30));
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    final body = jsonDecode(res.body);
+    throw Exception(body['message'] ?? "Échec initiation transfert");
+  }
+
+  static Future<Map<String, dynamic>> getDirectTransferStatus(String reference) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/transfer/direct/status/$reference'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    throw Exception("Statut introuvable");
+  }
+
   static Future<List<dynamic>> getUserTransactions(int userId) async {
     final headers = await _authHeaders();
     final res = await http.get(Uri.parse('$baseUrl/users/$userId/transactions'), headers: headers);
