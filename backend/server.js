@@ -182,17 +182,18 @@ const initDb = async () => {
             net_amount DECIMAL NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
-        // Transferts en attente de paiement (OM↔MoMo direct)
-        await db.query(`CREATE TABLE IF NOT EXISTS public.pending_transfers (
+        // Dépôts par virement bancaire
+        await db.query(`CREATE TABLE IF NOT EXISTS public.bank_deposits (
             id SERIAL PRIMARY KEY,
-            sender_id INTEGER REFERENCES public.users(id),
-            sender_phone TEXT NOT NULL,
-            sender_operator TEXT NOT NULL,
-            receiver_phone TEXT NOT NULL,
-            receiver_operator TEXT NOT NULL,
+            user_id INTEGER REFERENCES public.users(id),
             amount DECIMAL NOT NULL,
-            payment_reference TEXT UNIQUE NOT NULL,
+            reference TEXT UNIQUE NOT NULL,
+            bank_name TEXT,
+            sender_name TEXT,
             status TEXT DEFAULT 'pending',
+            admin_note TEXT,
+            validated_by INTEGER REFERENCES public.users(id),
+            validated_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
         // Ajouter les colonnes manquantes si la table existe déjà
@@ -1393,6 +1394,111 @@ app.get('/api/transfer/direct/status/:ref', authenticate, async (req, res) => {
         const result = await db.query("SELECT * FROM public.pending_transfers WHERE payment_reference=$1", [req.params.ref]);
         if (result.rows.length === 0) return res.status(404).json({ message: "Transfert non trouvé" });
         res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// ==========================================
+// DÉPÔT PAR VIREMENT BANCAIRE
+// ==========================================
+
+// Coordonnées bancaires de la plateforme (à configurer)
+const BANK_INFO = {
+    bank_name: process.env.BANK_NAME || 'UBA Cameroun',
+    account_name: process.env.BANK_ACCOUNT_NAME || 'G-CAISSE SARL',
+    account_number: process.env.BANK_ACCOUNT_NUMBER || '0000000000',
+    iban: process.env.BANK_IBAN || '',
+    swift: process.env.BANK_SWIFT || '',
+};
+
+// POST /api/bank-deposit — L'utilisateur déclare un virement
+app.post('/api/bank-deposit', authenticate, requireFields('user_id', 'amount', 'bank_name'), async (req, res) => {
+    const { user_id, amount, bank_name, sender_name } = req.body;
+    try {
+        const reference = `VIR_${user_id}_${Date.now()}`;
+        await db.query(`
+            INSERT INTO public.bank_deposits (user_id, amount, reference, bank_name, sender_name)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [user_id, amount, reference, bank_name, sender_name || '']);
+        res.status(201).json({
+            message: "Déclaration enregistrée. Crédité après vérification.",
+            reference,
+            bank_info: BANK_INFO,
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// GET /api/bank-deposit/info — Coordonnées bancaires de la plateforme
+app.get('/api/bank-deposit/info', authenticate, (req, res) => {
+    res.json(BANK_INFO);
+});
+
+// GET /api/bank-deposit/my — Liste des dépôts bancaires de l'utilisateur
+app.get('/api/bank-deposit/my', authenticate, async (req, res) => {
+    try {
+        const result = await db.query(
+            "SELECT * FROM public.bank_deposits WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20",
+            [req.query.user_id || req.user.id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// GET /api/admin/bank-deposits — Liste des dépôts en attente (admin)
+app.get('/api/admin/bank-deposits', authenticate, async (req, res) => {
+    try {
+        const status = req.query.status || 'pending';
+        const result = await db.query(`
+            SELECT bd.*, u.fullname as user_name, u.phone as user_phone
+            FROM public.bank_deposits bd
+            JOIN public.users u ON u.id = bd.user_id
+            WHERE bd.status = $1
+            ORDER BY bd.created_at DESC
+        `, [status]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// POST /api/admin/bank-deposits/:id/validate — Valider et créditer un virement (admin)
+app.post('/api/admin/bank-deposits/:id/validate', authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { admin_note } = req.body;
+    try {
+        const deposit = await db.query("SELECT * FROM public.bank_deposits WHERE id=$1 AND status='pending'", [id]);
+        if (deposit.rows.length === 0) return res.status(404).json({ message: "Dépôt non trouvé ou déjà traité" });
+        const d = deposit.rows[0];
+
+        await db.query('BEGIN');
+        await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [d.amount, d.user_id]);
+        await db.query("UPDATE public.bank_deposits SET status='validated', admin_note=$1, validated_by=$2, validated_at=NOW() WHERE id=$3",
+            [admin_note || '', req.user.id, id]);
+        await db.query(
+            "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'deposit','completed',$3,$4)",
+            [d.user_id, d.amount, d.reference, `Virement bancaire validé - ${d.bank_name}`]
+        );
+        await db.query('COMMIT');
+        res.json({ message: "Virement validé et compte crédité" });
+    } catch (err) {
+        await db.query('ROLLBACK').catch(() => {});
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// POST /api/admin/bank-deposits/:id/reject — Rejeter un virement (admin)
+app.post('/api/admin/bank-deposits/:id/reject', authenticate, async (req, res) => {
+    const { id } = req.params;
+    const { admin_note } = req.body;
+    try {
+        await db.query("UPDATE public.bank_deposits SET status='rejected', admin_note=$1, validated_by=$2, validated_at=NOW() WHERE id=$3 AND status='pending'",
+            [admin_note || 'Non vérifié', req.user.id, id]);
+        res.json({ message: "Virement rejeté" });
     } catch (err) {
         res.status(500).json({ message: "Erreur serveur" });
     }

@@ -511,4 +511,61 @@ class ApiService {
     final res = await http.get(Uri.parse('$baseUrl/admin/stats'), headers: headers);
     return res.statusCode == 200 ? jsonDecode(res.body) : {"total_fees": 0, "total_volume": 0};
   }
+
+  // ==========================================
+  // 7. DÉPÔT PAR VIREMENT BANCAIRE
+  // ==========================================
+
+  static Future<Map<String, dynamic>> getBankInfo() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/bank-deposit/info'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {};
+  }
+
+  static Future<Map<String, dynamic>> declareBankDeposit({
+    required int userId, required double amount, required String bankName, String senderName = '',
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/bank-deposit'),
+      headers: headers,
+      body: jsonEncode({"user_id": userId, "amount": amount, "bank_name": bankName, "sender_name": senderName}),
+    ).timeout(const Duration(seconds: 30));
+    if (res.statusCode == 201) return jsonDecode(res.body);
+    final body = jsonDecode(res.body);
+    throw Exception(body['message'] ?? "Erreur déclaration virement");
+  }
+
+  static Future<List<dynamic>> getMyBankDeposits(int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/bank-deposit/my?user_id=$userId'), headers: headers);
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  static Future<List<dynamic>> getPendingBankDeposits() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/admin/bank-deposits?status=pending'), headers: headers);
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  static Future<void> validateBankDeposit(int depositId, {String note = ''}) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/admin/bank-deposits/$depositId/validate'),
+      headers: headers,
+      body: jsonEncode({"admin_note": note}),
+    );
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? "Erreur validation");
+  }
+
+  static Future<void> rejectBankDeposit(int depositId, {String note = ''}) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/admin/bank-deposits/$depositId/reject'),
+      headers: headers,
+      body: jsonEncode({"admin_note": note}),
+    );
+    if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? "Erreur rejet");
+  }
 }

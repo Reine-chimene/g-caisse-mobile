@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'package:intl/intl.dart'; // N'oublie pas d'ajouter intl dans ton pubspec.yaml
+import 'admin_bank_deposits_screen.dart';
+import 'package:intl/intl.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -131,6 +132,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Icons.notifications_active, 
                     Colors.redAccent,
                     () => _showNotificationDialog(context)
+                  ),
+                  _actionTile(
+                    "Virements en attente",
+                    "Valider les dépôts par virement bancaire",
+                    Icons.account_balance,
+                    Colors.green,
+                    () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AdminBankDepositsScreen()))
                   ),
                   _actionTile(
                     "Gestion des Tontines", 

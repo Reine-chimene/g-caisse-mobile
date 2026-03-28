@@ -11,6 +11,7 @@ import 'airtime_screen.dart';
 import 'history_screen.dart';
 import 'tontine_details_screen.dart';
 import 'bill_payment_screen.dart';
+import 'bank_deposit_screen.dart';
 import 'features/qr_code_screen.dart';
 import 'features/financial_dashboard_screen.dart';
 import 'features/ai_assistant_screen.dart';
@@ -376,7 +377,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 _logoBtn("Orange", 'assets/logo_orange.jpg', () => _openTransactionDialog(isDeposit, "Orange", "cm.orange")),
                 _logoBtn("MTN", 'assets/logo_mtn.jpg', () => _openTransactionDialog(isDeposit, "MTN", "cm.mtn")),
                 if (isDeposit)
-                  _logoBtn("Carte", '', () => Navigator.pop(context), icon: Icons.credit_card),
+                  _logoBtn("Virement", '', () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (c) => BankDepositScreen(userData: widget.userData)));
+                  }, icon: Icons.account_balance),
               ],
             ),
           ],
