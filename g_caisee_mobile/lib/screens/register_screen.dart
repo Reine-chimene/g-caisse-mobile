@@ -16,6 +16,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameCtrl   = TextEditingController();
   final _phoneCtrl  = TextEditingController();
   final _pinCtrl    = TextEditingController();
+  final _referralCtrl = TextEditingController();
   bool  _isLoading  = false;
   bool  _obscurePin = true;
 
@@ -24,6 +25,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _pinCtrl.dispose();
+    _referralCtrl.dispose();
     super.dispose();
   }
 
@@ -35,6 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _nameCtrl.text.trim(),
         _phoneCtrl.text.trim(),
         _pinCtrl.text.trim(),
+        referralCode: _referralCtrl.text.trim(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -200,6 +203,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Code parrainage (optionnel)
+                _label('Code parrainage (optionnel)'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _referralCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(color: AppTheme.textLight, fontSize: 16, letterSpacing: 3),
+                  decoration: AppTheme.fieldDecoration(
+                    hint: 'Ex: GC00042',
+                    icon: Icons.card_giftcard_outlined,
+                    isDark: true,
                   ),
                 ),
 

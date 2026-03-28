@@ -58,12 +58,14 @@ class ApiService {
     }
   }
 
-  static Future<void> registerUser(String name, String phone, String pin) async {
+  static Future<void> registerUser(String name, String phone, String pin, {String referralCode = ''}) async {
     try {
+      final body = {"fullname": name, "phone": phone, "pincode": pin};
+      if (referralCode.isNotEmpty) body["referral_code"] = referralCode;
       final res = await http.post(
         Uri.parse('$baseUrl/users'),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"fullname": name, "phone": phone, "pincode": pin}),
+        body: jsonEncode(body),
       ).timeout(const Duration(seconds: 45));
       if (res.statusCode == 409) throw Exception("Ce numéro est déjà enregistré");
       if (res.statusCode != 201) {
@@ -567,5 +569,42 @@ class ApiService {
       body: jsonEncode({"admin_note": note}),
     );
     if (res.statusCode != 200) throw Exception(jsonDecode(res.body)['message'] ?? "Erreur rejet");
+  }
+
+  // ==========================================
+  // 8. PARRAINAGE
+  // ==========================================
+
+  static Future<Map<String, dynamic>> getReferralCode(int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/referral/code/$userId'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {};
+  }
+
+  static Future<List<dynamic>> getReferralHistory(int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/referral/history/$userId'), headers: headers);
+    return res.statusCode == 200 ? jsonDecode(res.body) : [];
+  }
+
+  // ==========================================
+  // 9. SCORE DE CONFIANCE & PREUVE VIDÉO
+  // ==========================================
+
+  static Future<Map<String, dynamic>> getTrustDetails(int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/trust-details'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {};
+  }
+
+  static Future<void> uploadProofVideo(int tontineId, int payoutId, String videoUrl) async {
+    final headers = await _authHeaders();
+    await http.post(
+      Uri.parse('$baseUrl/tontines/$tontineId/payout/$payoutId/proof'),
+      headers: headers,
+      body: jsonEncode({"video_url": videoUrl}),
+    );
   }
 }

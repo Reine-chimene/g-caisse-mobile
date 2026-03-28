@@ -55,7 +55,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
     try {
       await ApiService.createTontine(
         _nameCtrl.text.trim(), widget.userId, _frequency,
-        double.parse(_amountCtrl.text), 2.0,
+        double.parse(_amountCtrl.text), 1.0,
         deadlineTime: _deadlineStr,
         deadlineDay: _deadlineDay,
         hasCaisseFund: _hasCaisseFund,
@@ -139,6 +139,7 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
                     DropdownMenuItem(value: 'journalier', child: Text("Journalière")),
                     DropdownMenuItem(value: 'hebdo',      child: Text("Hebdomadaire")),
                     DropdownMenuItem(value: 'mensuel',    child: Text("Mensuelle")),
+                    DropdownMenuItem(value: 'express',    child: Text("Express (1 jour) 🚀")),
                   ],
                   onChanged: (v) => setState(() => _frequency = v!),
                 ),

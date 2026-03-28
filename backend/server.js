@@ -205,7 +205,30 @@ const initDb = async () => {
         await db.query(`ALTER TABLE public.tontine_members ADD COLUMN IF NOT EXISTS caisse_fund_paid DECIMAL DEFAULT 0`);
         // Corriger la contrainte frequency pour accepter toutes les valeurs de l'app
         await db.query("ALTER TABLE public.tontines DROP CONSTRAINT IF EXISTS tontines_frequency_check");
-        await db.query("ALTER TABLE public.tontines ADD CONSTRAINT tontines_frequency_check CHECK (frequency::text = ANY(ARRAY['journalier','hebdo','mensuel','quinzaine']::text[]))");
+        await db.query("ALTER TABLE public.tontines ADD CONSTRAINT tontines_frequency_check CHECK (frequency::text = ANY(ARRAY['journalier','hebdo','mensuel','quinzaine','express']::text[]))");
+
+        // === PARRAINAGE ===
+        await db.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS referral_code TEXT`);
+        await db.query(`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS referred_by INTEGER`);
+        await db.query(`CREATE TABLE IF NOT EXISTS public.referrals (
+            id SERIAL PRIMARY KEY,
+            referrer_id INTEGER REFERENCES public.users(id),
+            referred_id INTEGER REFERENCES public.users(id),
+            bonus_amount DECIMAL DEFAULT 500,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        // === PREUVE VIDÉO ===
+        await db.query(`ALTER TABLE public.tontine_payouts ADD COLUMN IF NOT EXISTS proof_video_url TEXT`);
+
+        // Générer les codes de parrainage manquants
+        const usersWithoutCode = await db.query("SELECT id FROM public.users WHERE referral_code IS NULL");
+        for (const u of usersWithoutCode.rows) {
+            const code = 'GC' + u.id.toString().padStart(5, '0');
+            await db.query("UPDATE public.users SET referral_code=$1 WHERE id=$2", [code, u.id]);
+        }
+
         console.log("✅ Base de données prête.");
     } catch (err) {
         console.error("❌ Erreur DB:", err.message);
@@ -226,14 +249,38 @@ app.get('/', (req, res) => {
 
 // POST /api/users  (inscription — appelé par registerUser dans api_service)
 app.post('/api/users', requireFields('fullname', 'phone', 'pincode'), async (req, res) => {
-    const { fullname, phone, pincode } = req.body;
+    const { fullname, phone, pincode, referral_code } = req.body;
     try {
         const pincode_hash = await bcrypt.hash(String(pincode), SALT_ROUNDS);
+
+        // Vérifier le code de parrainage
+        let referrerId = null;
+        if (referral_code) {
+            const referrer = await db.query("SELECT id FROM public.users WHERE referral_code=$1", [referral_code.toUpperCase()]);
+            if (referrer.rows.length > 0) referrerId = referrer.rows[0].id;
+        }
+
         const result = await db.query(
-            "INSERT INTO public.users (fullname, phone, pincode_hash) VALUES ($1, $2, $3) RETURNING id, fullname, phone",
-            [fullname, phone, pincode_hash]
+            "INSERT INTO public.users (fullname, phone, pincode_hash, referred_by) VALUES ($1, $2, $3, $4) RETURNING id, fullname, phone",
+            [fullname, phone, pincode_hash, referrerId]
         );
-        res.status(201).json(result.rows[0]);
+        const userId = result.rows[0].id;
+
+        // Générer le code de parrainage unique
+        const myReferralCode = 'GC' + userId.toString().padStart(5, '0');
+        await db.query("UPDATE public.users SET referral_code=$1 WHERE id=$2", [myReferralCode, userId]);
+
+        // Enregistrer le parrainage et créditer le bonus
+        if (referrerId) {
+            await db.query("INSERT INTO public.referrals (referrer_id, referred_id, status) VALUES ($1,$2,'completed')", [referrerId, userId]);
+            await db.query("UPDATE public.users SET balance = balance + 500 WHERE id=$1", [referrerId]);
+            await db.query(
+                "INSERT INTO public.transactions (user_id, amount, type, status, description) VALUES ($1,500,'referral_bonus','completed','Bonus parrainage')",
+                [referrerId]
+            );
+        }
+
+        res.status(201).json({ ...result.rows[0], referral_code: myReferralCode });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ message: "Ce numéro est déjà enregistré" });
         res.status(500).json({ message: "Erreur lors de l'inscription" });
@@ -800,7 +847,7 @@ app.post('/api/tontines/:id/payout', authenticate, requireFields('beneficiary_id
         if (total <= 0) return res.status(400).json({ message: "Aucune cotisation collectée ce mois" });
 
         // Calcul de la commission plateforme
-        const commissionRate = parseFloat(tontine.rows[0].commission_rate) || 2;
+        const commissionRate = parseFloat(tontine.rows[0].commission_rate) || 1;
         const commissionAmount = Math.round(total * commissionRate / 100);
         const netAmount = total - commissionAmount;
 
@@ -1354,6 +1401,87 @@ app.get('/api/admin/stats', authenticate, async (req, res) => {
             tontine_count: tontines.rows[0].tontine_count,
             recent_commissions: commissions.rows
         });
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// ==========================================
+// PARRAINAGE
+// ==========================================
+
+// GET /api/referral/code/:userId
+app.get('/api/referral/code/:userId', authenticate, async (req, res) => {
+    try {
+        const result = await db.query("SELECT referral_code, fullname FROM public.users WHERE id=$1", [req.params.userId]);
+        if (result.rows.length === 0) return res.status(404).json({ message: "Utilisateur non trouvé" });
+        const referrals = await db.query("SELECT COUNT(*) as count FROM public.referrals WHERE referrer_id=$1", [req.params.userId]);
+        res.json({
+            referral_code: result.rows[0].referral_code,
+            fullname: result.rows[0].fullname,
+            total_referrals: parseInt(referrals.rows[0].count),
+            bonus_per_referral: 500,
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// GET /api/referral/history/:userId
+app.get('/api/referral/history/:userId', authenticate, async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT r.*, u.fullname as referred_name, u.phone as referred_phone
+            FROM public.referrals r
+            JOIN public.users u ON u.id = r.referred_id
+            WHERE r.referrer_id=$1
+            ORDER BY r.created_at DESC
+        `, [req.params.userId]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// ==========================================
+// SCORE DE CONFIANCE & PREUVE VIDÉO
+// ==========================================
+
+// GET /api/users/:userId/trust-details
+app.get('/api/users/:userId/trust-details', authenticate, async (req, res) => {
+    try {
+        const user = await db.query("SELECT credibility_score, created_at FROM public.users WHERE id=$1", [req.params.userId]);
+        if (user.rows.length === 0) return res.status(404).json({ message: "Utilisateur non trouvé" });
+
+        const payments = await db.query("SELECT COUNT(*) as count FROM public.tontine_payments WHERE user_id=$1 AND is_late=false", [req.params.userId]);
+        const latePayments = await db.query("SELECT COUNT(*) as count FROM public.tontine_payments WHERE user_id=$1 AND is_late=true", [req.params.userId]);
+        const referrals = await db.query("SELECT COUNT(*) as count FROM public.referrals WHERE referrer_id=$1", [req.params.userId]);
+        const tontines = await db.query("SELECT COUNT(*) as count FROM public.tontine_members WHERE user_id=$1", [req.params.userId]);
+
+        const onTime = parseInt(payments.rows[0].count);
+        const late = parseInt(latePayments.rows[0].count);
+        const total = onTime + late;
+        const score = total > 0 ? Math.round((onTime / total) * 100) : user.rows[0].credibility_score;
+
+        res.json({
+            score: Math.min(100, Math.max(0, score)),
+            on_time_payments: onTime,
+            late_payments: late,
+            referrals_count: parseInt(referrals.rows[0].count),
+            tontines_count: parseInt(tontines.rows[0].count),
+            member_since: user.rows[0].created_at,
+        });
+    } catch (err) {
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// POST /api/tontines/:id/payout/:payoutId/proof
+app.post('/api/tontines/:id/payout/:payoutId/proof', authenticate, requireFields('video_url'), async (req, res) => {
+    try {
+        await db.query("UPDATE public.tontine_payouts SET proof_video_url=$1 WHERE id=$2 AND tontine_id=$3",
+            [req.body.video_url, req.params.payoutId, req.params.id]);
+        res.json({ message: "Preuve vidéo enregistrée" });
     } catch (err) {
         res.status(500).json({ message: "Erreur serveur" });
     }

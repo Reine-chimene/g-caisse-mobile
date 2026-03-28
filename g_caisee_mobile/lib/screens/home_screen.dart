@@ -12,6 +12,7 @@ import 'history_screen.dart';
 import 'tontine_details_screen.dart';
 import 'bill_payment_screen.dart';
 import 'bank_deposit_screen.dart';
+import 'referral_screen.dart';
 import 'features/qr_code_screen.dart';
 import 'features/financial_dashboard_screen.dart';
 import 'features/ai_assistant_screen.dart';
@@ -456,6 +457,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
             () => Navigator.push(context, MaterialPageRoute(builder: (_) => AiAssistantScreen(userData: widget.userData)))),
         _serviceCard(Icons.emoji_events_rounded, "Badges",   const Color(0xFFFFD700),
             () => Navigator.push(context, MaterialPageRoute(builder: (_) => GamificationScreen(userData: widget.userData)))),
+        _serviceCard(Icons.card_giftcard, "Parrainage",  Colors.pink,
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReferralScreen(userData: widget.userData)))),
       ],
     );
   }
