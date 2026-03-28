@@ -1029,28 +1029,57 @@ app.post('/api/payout', authenticate, requireFields('user_id', 'amount', 'phone'
     }
 });
 
-// POST /api/transfer (transfert interne entre utilisateurs)
+// POST /api/transfer (transfert interne ou via Mobile Money)
 app.post('/api/transfer', authenticate, requireFields('sender_id', 'receiver_phone', 'amount'), async (req, res) => {
-    const { sender_id, receiver_phone, amount } = req.body;
+    const { sender_id, receiver_phone, amount, operator } = req.body;
     try {
         await db.query('BEGIN');
-        const sender = await db.query("SELECT balance FROM public.users WHERE id=$1", [sender_id]);
+        const sender = await db.query("SELECT balance, fullname FROM public.users WHERE id=$1", [sender_id]);
         if (sender.rows.length === 0 || sender.rows[0].balance < amount) {
             await db.query('ROLLBACK');
             return res.status(400).json({ message: "Solde insuffisant" });
         }
-        const receiver = await db.query("SELECT id FROM public.users WHERE phone=$1", [receiver_phone]);
-        if (receiver.rows.length === 0) {
-            await db.query('ROLLBACK');
-            return res.status(404).json({ message: "Destinataire non trouvé" });
-        }
-        const receiverId = receiver.rows[0].id;
+
+        // Débit de l'expéditeur
         await db.query("UPDATE public.users SET balance = balance - $1 WHERE id=$2", [amount, sender_id]);
-        await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [amount, receiverId]);
-        await db.query("INSERT INTO public.transactions (user_id, amount, type, status, description) VALUES ($1,$2,'transfer_out','completed','Transfert envoyé')", [sender_id, amount]);
-        await db.query("INSERT INTO public.transactions (user_id, amount, type, status, description) VALUES ($1,$2,'transfer_in','completed','Transfert reçu')", [receiverId, amount]);
-        await db.query('COMMIT');
-        res.json({ message: "Transfert effectué" });
+
+        if (operator && (operator === 'cm.orange' || operator === 'cm.mtn')) {
+            // Transfert réel via Notch Pay (Orange Money / MTN MoMo)
+            if (!process.env.NOTCH_PRIVATE_KEY) {
+                await db.query('ROLLBACK');
+                return res.status(500).json({ message: "Configuration paiement manquante" });
+            }
+            const reference = `XFER_${sender_id}_${Date.now()}`;
+            try {
+                const notchRes = await axios.post('https://api.notchpay.co/transfers', {
+                    amount, currency: 'XAF', reference,
+                    destination: { channel: operator, number: receiver_phone, name: sender.rows[0].fullname }
+                }, { headers: { 'Authorization': process.env.NOTCH_PUBLIC_KEY, 'X-Grant': process.env.NOTCH_PRIVATE_KEY, 'Content-Type': 'application/json' } });
+
+                await db.query("INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'transfer_out','completed',$3,$4)",
+                    [sender_id, amount, reference, `Transfert ${operator === 'cm.orange' ? 'OM' : 'MoMo'} vers ${receiver_phone}`]);
+                await db.query('COMMIT');
+                return res.json({ message: `Transfert ${operator === 'cm.orange' ? 'Orange Money' : 'MTN MoMo'} effectué`, data: notchRes.data });
+            } catch (notchErr) {
+                // Rembourser l'expéditeur si Notch Pay échoue
+                await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [amount, sender_id]);
+                await db.query('ROLLBACK');
+                return res.status(400).json({ message: notchErr.response?.data?.message || "Échec transfert Mobile Money" });
+            }
+        } else {
+            // Transfert interne (balance à balance)
+            const receiver = await db.query("SELECT id FROM public.users WHERE phone=$1", [receiver_phone]);
+            if (receiver.rows.length === 0) {
+                await db.query('ROLLBACK');
+                return res.status(404).json({ message: "Destinataire non trouvé" });
+            }
+            const receiverId = receiver.rows[0].id;
+            await db.query("UPDATE public.users SET balance = balance + $1 WHERE id=$2", [amount, receiverId]);
+            await db.query("INSERT INTO public.transactions (user_id, amount, type, status, description) VALUES ($1,$2,'transfer_out','completed','Transfert envoyé')", [sender_id, amount]);
+            await db.query("INSERT INTO public.transactions (user_id, amount, type, status, description) VALUES ($1,$2,'transfer_in','completed','Transfert reçu')", [receiverId, amount]);
+            await db.query('COMMIT');
+            res.json({ message: "Transfert effectué" });
+        }
     } catch (err) {
         await db.query('ROLLBACK').catch(() => {});
         res.status(500).json({ message: "Erreur transfert" });

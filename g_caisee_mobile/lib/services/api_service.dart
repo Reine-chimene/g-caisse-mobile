@@ -149,7 +149,8 @@ class ApiService {
     final headers = await _authHeaders();
     final res = await http.post(Uri.parse('$baseUrl/transfer'), headers: headers, body: jsonEncode({"sender_id": senderId, "receiver_phone": receiverPhone, "amount": amount, "operator": operator}));
     if (res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception("Échec transfert");
+    final body = jsonDecode(res.body);
+    throw Exception(body['message'] ?? "Échec transfert");
   }
 
   static Future<List<dynamic>> getUserTransactions(int userId) async {
