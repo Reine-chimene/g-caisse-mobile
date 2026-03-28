@@ -331,7 +331,8 @@ class ApiService {
       }),
     ).timeout(const Duration(seconds: 30));
     if (res.statusCode == 201 || res.statusCode == 200) return jsonDecode(res.body);
-    throw Exception(jsonDecode(res.body)['message'] ?? "Erreur lors de la création");
+    final body = jsonDecode(res.body);
+    throw Exception(body['error'] ?? body['message'] ?? body['detail'] ?? "Erreur lors de la création (${res.statusCode})");
   }
 
   static Future<Map<String, dynamic>> updateTontine(int tontineId, Map<String, dynamic> data) async {

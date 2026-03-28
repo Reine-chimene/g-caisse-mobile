@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../services/api_service.dart';
 
 class CreateTontineScreen extends StatefulWidget {
@@ -67,10 +68,17 @@ class _CreateTontineScreenState extends State<CreateTontineScreen> {
           backgroundColor: Colors.green, behavior: SnackBarBehavior.floating));
         Navigator.pop(context, true);
       }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString().replaceAll('Exception:', '')),
+    } on TimeoutException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Le serveur met trop de temps à répondre. Réessaie.'),
         backgroundColor: Colors.red));
+    } catch (e) {
+      final msg = e.toString().replaceAll('Exception:', '').trim();
+      debugPrint('[CREATE TONTINE ERROR] userId=${widget.userId} | $msg');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5)));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

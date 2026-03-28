@@ -390,6 +390,11 @@ app.post('/api/tontines', authenticate, requireFields('name', 'admin_id', 'frequ
     const { name, admin_id, frequency, amount, commission_rate,
             deadline_time, deadline_day, has_caisse_fund, caisse_fund_amount } = req.body;
     try {
+        // Vérifier que l'utilisateur existe
+        const userCheck = await db.query("SELECT id FROM public.users WHERE id=$1", [admin_id]);
+        if (userCheck.rows.length === 0) {
+            return res.status(400).json({ message: "Utilisateur invalide", error: `admin_id ${admin_id} non trouvé` });
+        }
         const result = await db.query(`
             INSERT INTO public.tontines
               (name, admin_id, frequency, amount_to_pay, commission_rate, status,
