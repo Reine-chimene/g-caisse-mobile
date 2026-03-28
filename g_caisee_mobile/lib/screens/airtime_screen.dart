@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/notchpay_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/api_service.dart';
 
 class AirtimeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -20,17 +21,21 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   static const Color _orange = Color(0xFFFF7900);
 
-  // Mapping opérateur → infos affichage
   static const Map<String, Map<String, dynamic>> _operators = {
     'cm.mtn': {
-      'label': 'MTN MoMo',
+      'label': 'MTN',
       'logo':  'assets/logo_mtn.jpg',
       'color': Color(0xFFFFCC00),
     },
     'cm.orange': {
-      'label': 'Orange Money',
+      'label': 'Orange',
       'logo':  'assets/logo_orange.jpg',
       'color': Color(0xFFFF7900),
+    },
+    'cm.camtel': {
+      'label': 'Camtel',
+      'logo':  '',
+      'color': Color(0xFF0066CC),
     },
   };
 
@@ -39,7 +44,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   @override
   void initState() {
     super.initState();
-    // Pré-remplir avec le numéro de l'utilisateur connecté
     _phoneCtrl.text = widget.userData['phone']?.toString() ?? '';
   }
 
@@ -53,8 +57,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   double get _amount => double.tryParse(_amountCtrl.text) ?? 0.0;
   double get _fees   => _amount * 0.02;
   double get _total  => _amount + _fees;
-
-  // ── VALIDATION ──────────────────────────────────────────
 
   void _showConfirmation() {
     if (_phoneCtrl.text.isEmpty || _amount < 100) {
@@ -90,12 +92,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             _row("Opérateur",  opInfo['label'] as String),
             _row("Numéro",     _phoneCtrl.text),
             _row("Montant",    "${_amount.toInt()} FCFA"),
-            _row("Frais (2%)", "${_fees.toInt()} FCFA"),
             const Divider(),
-            _row("Total débité", "${_total.toInt()} FCFA", bold: true),
+            _row("Total", "${_amount.toInt()} FCFA", bold: true),
             const SizedBox(height: 16),
-
-            // Info PIN
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -103,22 +102,20 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.blue.shade100),
               ),
-              child: Row(
+              child: const Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
-                  const SizedBox(width: 10),
+                  Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      "Vous recevrez une demande de PIN ${opInfo['label']} "
-                      "sur votre téléphone pour valider.",
-                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                      "Tu seras redirigé vers Orange Money ou MTN MoMo pour payer.",
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -144,27 +141,85 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     );
   }
 
-  // ── PAIEMENT ────────────────────────────────────────────
-
   Future<void> _submitRecharge() async {
     setState(() => _isLoading = true);
     try {
-      await NotchPayService.buyAirtime(
-        context: context,
-        userId:        widget.userData['id'],
-        receiverPhone: _phoneCtrl.text.trim(),
-        amount:        _amount,
-        operator:      _selectedOperator,
-        type:          _rechargeType,
-        plan:          _rechargeType == 'Data' ? _dataPlan : null,
+      final userId = int.tryParse(widget.userData['id'].toString()) ?? 0;
+      final res = await ApiService.buyAirtimeOrData(
+        userId: userId,
+        phoneNumber: _phoneCtrl.text.trim(),
+        amount: _amount,
+        operator: _selectedOperator,
+        type: _rechargeType,
+        plan: _rechargeType == 'Data' ? _dataPlan : null,
       );
       if (!mounted) return;
-      _showSuccessDialog();
+      setState(() => _isLoading = false);
+
+      // Ouvrir la page de paiement
+      final paymentUrl = res['payment_url'] as String?;
+      if (paymentUrl != null) {
+        final uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+        final reference = res['reference'] as String?;
+        if (reference != null && mounted) _showWaitingDialog(reference);
+      } else {
+        _showSuccessDialog();
+      }
     } catch (e) {
       if (mounted) _showMsg(e.toString().replaceFirst('Exception: ', ''), Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showWaitingDialog(String reference) {
+    final opInfo = _operators[_selectedOperator]!;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: opInfo['color'] as Color),
+            const SizedBox(height: 20),
+            Text("Recharge ${opInfo['label']} en cours...", style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text("Réf: $reference", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 15),
+            const Text("Paie via Orange Money ou MTN MoMo dans le navigateur, puis reviens ici.",
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FERMER")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: opInfo['color'] as Color),
+            onPressed: () async {
+              try {
+                final status = await ApiService.getDirectTransferStatus(reference);
+                if (status['status'] == 'completed') {
+                  Navigator.pop(ctx);
+                  _showSuccessDialog();
+                } else if (status['status'] == 'failed') {
+                  Navigator.pop(ctx);
+                  _showMsg("La recharge a échoué", Colors.red);
+                } else {
+                  _showMsg("Paiement en attente. Termine le paiement d'abord.", Colors.orange);
+                }
+              } catch (e) {
+                _showMsg("Erreur de vérification", Colors.red);
+              }
+            },
+            child: const Text("J'AI PAYÉ", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSuccessDialog() {
@@ -213,8 +268,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     );
   }
 
-  // ── BUILD ────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final opColor = _operators[_selectedOperator]!['color'] as Color;
@@ -233,7 +286,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Opérateur ──
             const Text("Opérateur",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
@@ -247,7 +299,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     onTap: () => setState(() => _selectedOperator = e.key),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
-                      margin: const EdgeInsets.only(right: 10),
+                      margin: const EdgeInsets.only(right: 8),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         color: isSel ? color.withValues(alpha: 0.1) : Colors.grey.shade50,
@@ -258,10 +310,12 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                       ),
                       child: Column(
                         children: [
-                          Image.asset(info['logo'] as String,
-                              width: 36, height: 36,
-                              errorBuilder: (_, __, ___) =>
-                                  Icon(Icons.phone_android, color: color, size: 36)),
+                          info['logo'].toString().isNotEmpty
+                              ? Image.asset(info['logo'] as String,
+                                  width: 36, height: 36,
+                                  errorBuilder: (_, __, ___) =>
+                                      Icon(Icons.phone_android, color: color, size: 36))
+                              : Icon(Icons.phone_android, color: color, size: 36),
                           const SizedBox(height: 6),
                           Text(info['label'] as String,
                               style: TextStyle(
@@ -277,7 +331,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ),
             const SizedBox(height: 25),
 
-            // ── Type de service ──
             const Text("Type de service",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
@@ -320,7 +373,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ],
             const SizedBox(height: 25),
 
-            // ── Numéro ──
             TextField(
               controller: _phoneCtrl,
               keyboardType: TextInputType.phone,
@@ -338,7 +390,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // ── Montant ──
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
@@ -354,10 +405,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     borderRadius: BorderRadius.circular(15)),
               ),
             ),
-            const SizedBox(height: 20),
-
-            // ── Récap frais ──
-            if (_amount > 0) _buildPricingCard(opColor),
             const SizedBox(height: 30),
 
             SizedBox(
@@ -382,27 +429,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ── WIDGETS ──────────────────────────────────────────────
-
-  Widget _buildPricingCard(Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        children: [
-          _row("Montant net",    "${_amount.toInt()} F"),
-          _row("Frais (2%)",     "+ ${_fees.toInt()} F", color: Colors.orange),
-          const Divider(height: 16),
-          _row("Total débité",   "${_total.toInt()} F", bold: true),
-        ],
       ),
     );
   }

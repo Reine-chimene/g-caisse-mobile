@@ -1115,26 +1115,44 @@ app.get('/api/transactions/:id/receipt', authenticate, async (req, res) => {
 // SERVICES (Airtime, Factures)
 // ==========================================
 
-// POST /api/services/airtime
+// POST /api/services/airtime — Paiement direct via Notch Pay
 app.post('/api/services/airtime', authenticate, requireFields('user_id', 'receiver_phone', 'amount', 'operator'), async (req, res) => {
-    const { user_id, receiver_phone, amount, operator, service_type } = req.body;
+    const { user_id, receiver_phone, amount, operator, service_type, phone } = req.body;
+    if (!process.env.NOTCH_PUBLIC_KEY) {
+        return res.status(500).json({ message: "Configuration paiement manquante" });
+    }
     const reference = `AIR_${user_id}_${Date.now()}`;
     try {
-        const userResult = await db.query("SELECT balance FROM public.users WHERE id=$1", [user_id]);
-        if (userResult.rows.length === 0 || userResult.rows[0].balance < amount) {
-            return res.status(400).json({ message: "Solde insuffisant" });
+        // Enregistrer la recharge en attente
+        await db.query(`
+            INSERT INTO public.pending_transfers 
+              (sender_id, sender_phone, sender_operator, receiver_phone, receiver_operator, amount, payment_reference)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [user_id, phone || receiver_phone, operator, receiver_phone, operator, amount, reference]);
+
+        // Initier le paiement Notch Pay
+        const response = await axios.post('https://api.notchpay.co/payments', {
+            amount,
+            currency: 'XAF',
+            reference,
+            callback: process.env.PAYMENT_CALLBACK_URL,
+            customer: { name: `User ${user_id}`, email: `user${user_id}@g-caisse.com`, phone: phone || receiver_phone }
+        }, {
+            headers: {
+                'Authorization': process.env.NOTCH_PUBLIC_KEY,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = response.data;
+        const paymentUrl = data?.transaction?.payment_url || data?.authorization_url || data?.payment_url;
+        if (!paymentUrl) {
+            return res.status(400).json({ message: "URL de paiement non reçue", details: data });
         }
-        await db.query('BEGIN');
-        await db.query("UPDATE public.users SET balance = balance - $1 WHERE id=$2", [amount, user_id]);
-        await db.query(
-            "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'airtime','completed',$3,$4)",
-            [user_id, amount, reference, `Recharge ${operator} - ${receiver_phone}`]
-        );
-        await db.query('COMMIT');
-        res.json({ success: true, reference, message: "Recharge effectuée" });
+        res.json({ success: true, payment_url: paymentUrl, reference, message: "Recharge initiée" });
     } catch (err) {
-        await db.query('ROLLBACK').catch(() => {});
-        res.status(500).json({ message: "Erreur recharge" });
+        console.error('[AIRTIME ERROR]', err.response?.data || err.message);
+        res.status(400).json({ message: err.response?.data?.message || "Erreur recharge" });
     }
 });
 
@@ -1592,6 +1610,27 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                 console.error('[WEBHOOK BILL ERROR]', err.message);
                 await db.query("UPDATE public.pending_transfers SET status='failed' WHERE payment_reference=$1", [reference]).catch(() => {});
                 return res.status(500).send('Bill Error');
+            }
+        }
+
+        // Recharge airtime/data
+        if (reference.startsWith('AIR_')) {
+            try {
+                const pending = await db.query("SELECT * FROM public.pending_transfers WHERE payment_reference=$1 AND status='pending'", [reference]);
+                if (pending.rows.length === 0) return res.status(200).send('Already processed');
+                const pt = pending.rows[0];
+
+                // Marquer comme payé
+                await db.query("UPDATE public.pending_transfers SET status='completed' WHERE id=$1", [pt.id]);
+                await db.query(
+                    "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'airtime','completed',$3,$4)",
+                    [pt.sender_id, pt.amount, reference, `Recharge ${pt.receiver_operator} - ${pt.receiver_phone}`]
+                );
+                return res.status(200).send('OK');
+            } catch (err) {
+                console.error('[WEBHOOK AIRTIME ERROR]', err.message);
+                await db.query("UPDATE public.pending_transfers SET status='failed' WHERE payment_reference=$1", [reference]).catch(() => {});
+                return res.status(500).send('Airtime Error');
             }
         }
     }
