@@ -189,6 +189,9 @@ const initDb = async () => {
         await db.query(`ALTER TABLE public.tontines ADD COLUMN IF NOT EXISTS caisse_fund_amount DECIMAL DEFAULT 0`);
         // Colonnes manquantes dans tontine_members
         await db.query(`ALTER TABLE public.tontine_members ADD COLUMN IF NOT EXISTS caisse_fund_paid DECIMAL DEFAULT 0`);
+        // Corriger la contrainte frequency pour accepter toutes les valeurs de l'app
+        await db.query("ALTER TABLE public.tontines DROP CONSTRAINT IF EXISTS tontines_frequency_check");
+        await db.query("ALTER TABLE public.tontines ADD CONSTRAINT tontines_frequency_check CHECK (frequency::text = ANY(ARRAY['journalier','hebdo','mensuel','quinzaine']::text[]))");
         console.log("✅ Base de données prête.");
     } catch (err) {
         console.error("❌ Erreur DB:", err.message);
