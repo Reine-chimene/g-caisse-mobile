@@ -60,7 +60,7 @@ class NotchPayService {
     required String phone,
     required String operator,
   }) async {
-    return await ApiService.payBill(
+    final res = await ApiService.payBill(
       userId: userId,
       contractNumber: contractNumber,
       amount: amount,
@@ -68,5 +68,16 @@ class NotchPayService {
       phone: phone,
       operator: operator,
     );
+
+    // Ouvrir la page de paiement Notch Pay
+    final paymentUrl = res['payment_url'] as String?;
+    if (paymentUrl != null) {
+      final uri = Uri.parse(paymentUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+
+    return res;
   }
 }

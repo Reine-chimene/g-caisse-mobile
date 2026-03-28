@@ -1148,27 +1148,45 @@ app.get('/api/services/airtime/status/:ref', authenticate, async (req, res) => {
     }
 });
 
-// POST /api/services/:billType (eneo, camwater, etc.)
-app.post('/api/services/:billType', authenticate, requireFields('user_id', 'amount'), async (req, res) => {
-    const { user_id, amount, contract_number } = req.body;
+// POST /api/services/:billType (eneo, camwater, etc.) — Paiement direct via Notch Pay
+app.post('/api/services/:billType', authenticate, requireFields('user_id', 'amount', 'phone'), async (req, res) => {
+    const { user_id, amount, contract_number, phone, operator } = req.body;
     const { billType } = req.params;
+    if (!process.env.NOTCH_PUBLIC_KEY) {
+        return res.status(500).json({ message: "Configuration paiement manquante" });
+    }
     const reference = `BILL_${billType.toUpperCase()}_${user_id}_${Date.now()}`;
     try {
-        const userResult = await db.query("SELECT balance FROM public.users WHERE id=$1", [user_id]);
-        if (userResult.rows.length === 0 || userResult.rows[0].balance < amount) {
-            return res.status(400).json({ message: "Solde insuffisant" });
+        // Enregistrer la facture en attente
+        await db.query(`
+            INSERT INTO public.pending_transfers 
+              (sender_id, sender_phone, sender_operator, receiver_phone, receiver_operator, amount, payment_reference)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [user_id, phone, operator || 'cm.mtn', `BILL_${billType}`, operator || 'cm.mtn', amount, reference]);
+
+        // Initier le paiement Notch Pay
+        const response = await axios.post('https://api.notchpay.co/payments', {
+            amount,
+            currency: 'XAF',
+            reference,
+            callback: process.env.PAYMENT_CALLBACK_URL,
+            customer: { name: `User ${user_id}`, email: `user${user_id}@g-caisse.com`, phone }
+        }, {
+            headers: {
+                'Authorization': process.env.NOTCH_PUBLIC_KEY,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = response.data;
+        const paymentUrl = data?.transaction?.payment_url || data?.authorization_url || data?.payment_url;
+        if (!paymentUrl) {
+            return res.status(400).json({ message: "URL de paiement non reçue", details: data });
         }
-        await db.query('BEGIN');
-        await db.query("UPDATE public.users SET balance = balance - $1 WHERE id=$2", [amount, user_id]);
-        await db.query(
-            "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'bill','completed',$3,$4)",
-            [user_id, amount, reference, `Facture ${billType.toUpperCase()} - ${contract_number || ''}`]
-        );
-        await db.query('COMMIT');
-        res.json({ success: true, reference, message: `Facture ${billType} payée` });
+        res.json({ success: true, payment_url: paymentUrl, reference, message: `Facture ${billType} - Paiement initié` });
     } catch (err) {
-        await db.query('ROLLBACK').catch(() => {});
-        res.status(500).json({ message: "Erreur paiement facture" });
+        console.error('[BILL PAYMENT ERROR]', err.response?.data || err.message);
+        res.status(400).json({ message: err.response?.data?.message || `Erreur paiement facture ${billType}` });
     }
 });
 
@@ -1446,6 +1464,28 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                 console.error('[WEBHOOK XFER ERROR]', err.response?.data || err.message);
                 await db.query("UPDATE public.pending_transfers SET status='failed' WHERE payment_reference=$1", [reference]).catch(() => {});
                 return res.status(500).send('Transfer Error');
+            }
+        }
+
+        // Paiement de facture (ENEO, CamWater, etc.)
+        if (reference.startsWith('BILL_')) {
+            try {
+                const pending = await db.query("SELECT * FROM public.pending_transfers WHERE payment_reference=$1 AND status='pending'", [reference]);
+                if (pending.rows.length === 0) return res.status(200).send('Already processed');
+                const pt = pending.rows[0];
+                const billName = pt.receiver_phone.replace('BILL_', '');
+
+                // Marquer comme payé
+                await db.query("UPDATE public.pending_transfers SET status='completed' WHERE id=$1", [pt.id]);
+                await db.query(
+                    "INSERT INTO public.transactions (user_id, amount, type, status, reference, description) VALUES ($1,$2,'bill','completed',$3,$4)",
+                    [pt.sender_id, pt.amount, reference, `Facture ${billName} payée`]
+                );
+                return res.status(200).send('OK');
+            } catch (err) {
+                console.error('[WEBHOOK BILL ERROR]', err.message);
+                await db.query("UPDATE public.pending_transfers SET status='failed' WHERE payment_reference=$1", [reference]).catch(() => {});
+                return res.status(500).send('Bill Error');
             }
         }
     }

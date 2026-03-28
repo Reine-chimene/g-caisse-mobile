@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/notchpay_service.dart';
+import '../services/api_service.dart';
 import '../services/pdf_receipt_service.dart';
 
 class BillPaymentScreen extends StatefulWidget {
@@ -39,13 +40,6 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
       _showMsg("Veuillez remplir correctement les champs", Colors.red);
       return;
     }
-    final balance =
-        double.tryParse(widget.userData['balance']?.toString() ?? '0') ?? 0.0;
-    if (_total > balance) {
-      _showMsg("Solde insuffisant (${balance.toInt()} F) - Actualisez l'accueil",
-          Colors.red);
-      return;
-    }
 
     showModalBottomSheet(
       context: context,
@@ -79,24 +73,22 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
             _confirmRow("Total à débiter", "${_total.toInt()} FCFA",
                 isTotal: true),
             const SizedBox(height: 16),
-            // Info USSD
+            // Info paiement
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
+                color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.shade200),
+                border: Border.all(color: Colors.blue.shade200),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                  const Icon(Icons.info_outline, color: Colors.blue, size: 18),
                   const SizedBox(width: 10),
-                  Expanded(
+                  const Expanded(
                     child: Text(
-                      "Après validation, composez "
-                      "${_selectedOperator == 'cm.mtn' ? '*126#' : '*150*3#'} "
-                      "sur votre téléphone pour confirmer.",
-                      style: const TextStyle(fontSize: 12, color: Colors.orange),
+                      "Tu seras redirigé vers Orange Money ou MTN MoMo pour payer ta facture.",
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                   ),
                 ],
@@ -154,7 +146,7 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
     try {
       final res = await NotchPayService.payBill(
         context:        context,
-        userId:         widget.userData['id'],
+        userId:         int.tryParse(widget.userData['id'].toString()) ?? 0,
         contractNumber: _contractController.text,
         amount:         _amount,
         billType:       _selectedBill,
@@ -162,12 +154,66 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
         operator:       _selectedOperator,
       );
       if (!mounted) return;
-      _showSuccessDialog(res);
+      setState(() => _isLoading = false);
+
+      // Afficher le dialog d'attente après ouverture de la page de paiement
+      final reference = res['reference'] as String?;
+      if (reference != null) {
+        _showWaitingDialog(reference);
+      } else {
+        _showSuccessDialog(res);
+      }
     } catch (e) {
       if (mounted) _showMsg(e.toString().replaceFirst('Exception: ', ''), Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showWaitingDialog(String reference) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFFFF7900)),
+            const SizedBox(height: 20),
+            Text("Paiement $_selectedBill en cours...", style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text("Réf: $reference", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 15),
+            const Text("Paie via Orange Money ou MTN MoMo dans le navigateur, puis reviens ici.",
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FERMER")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _mainColor),
+            onPressed: () async {
+              try {
+                final status = await ApiService.getDirectTransferStatus(reference);
+                if (status['status'] == 'completed') {
+                  Navigator.pop(ctx);
+                  _showSuccessDialog({'reference': reference});
+                } else if (status['status'] == 'failed') {
+                  Navigator.pop(ctx);
+                  _showMsg("Le paiement a échoué", Colors.red);
+                } else {
+                  _showMsg("Paiement en attente. Termine le paiement d'abord.", Colors.orange);
+                }
+              } catch (e) {
+                _showMsg("Erreur de vérification", Colors.red);
+              }
+            },
+            child: const Text("J'AI PAYÉ", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── DIALOGS ─────────────────────────────────────────────
@@ -306,7 +352,7 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
             _buildPricingCard(),
             const SizedBox(height: 16),
 
-            // Info USSD
+            // Info paiement
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -316,16 +362,12 @@ class _BillPaymentScreenState extends State<BillPaymentScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.dialpad_rounded,
-                      color: Colors.blue.shade700, size: 20),
+                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      _selectedOperator == 'cm.mtn'
-                          ? "Le paiement sera confirmé via *126# (MTN MoMo)"
-                          : "Le paiement sera confirmé via *150*3# (Orange Money)",
-                      style: TextStyle(
-                          color: Colors.blue.shade700, fontSize: 13),
+                      "Le paiement se fait directement via Orange Money ou MTN MoMo.",
+                      style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
                     ),
                   ),
                 ],

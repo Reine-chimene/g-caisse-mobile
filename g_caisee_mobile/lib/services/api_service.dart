@@ -216,8 +216,8 @@ class ApiService {
   static Future<Map<String, dynamic>> payBill({required int userId, required String contractNumber, required double amount, required String billType, required String phone, required String operator}) async {
     final headers = await _authHeaders();
     final res = await http.post(Uri.parse('$baseUrl/services/${billType.toLowerCase()}'), headers: headers, body: jsonEncode({"user_id": userId, "contract_number": contractNumber, "amount": amount, "phone": phone, "operator": operator})).timeout(const Duration(seconds: 30));
+    if (res.statusCode == 200) return jsonDecode(res.body);
     final body = jsonDecode(res.body);
-    if (res.statusCode == 200) return body;
     throw Exception(body['message'] ?? "Erreur facture");
   }
 
