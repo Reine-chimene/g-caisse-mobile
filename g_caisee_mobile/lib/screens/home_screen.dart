@@ -289,15 +289,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       if (isDeposit) {
         // Ouvre la page Notch Pay dans le navigateur
-        await NotchPayService.deposit(
+        final reference = await NotchPayService.deposit(
           context: context,
           userId: myId,
           amount: amount,
           phone: phone,
           name: widget.userData['fullname'] ?? 'Membre G-Caisse',
         );
-        if (mounted) {
-          _showDepositWaitingDialog(myId);
+        if (mounted && reference.isNotEmpty) {
+          _showDepositWaitingDialog(myId, reference);
         }
       } else {
         final result = await ApiService.processPayout(
@@ -324,7 +324,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  void _showDepositWaitingDialog(int userId) {
+  void _showDepositWaitingDialog(int userId, String reference) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -343,18 +343,35 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
           SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
             onPressed: () async {
-              // Vérifier le solde via l'API
+              // Vérifier le statut du dépôt via Notch Pay
               try {
-                final data = await ApiService.verifyDeposits(userId);
-                final balance = double.tryParse(data['balance'].toString()) ?? 0;
-                if (mounted) {
-                  setState(() => totalBalance = balance);
-                  Navigator.pop(ctx);
-                  _showSuccessDialog('Dépôt effectué ! Solde : ${balance.toStringAsFixed(0)} FCFA ✅');
+                final status = await ApiService.checkDepositStatus(reference);
+                if (status['status'] == 'complete') {
+                  final balance = double.tryParse(status['amount']?.toString() ?? '0') ?? 0;
+                  _loadData(); // Rafraîchir le solde
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    _showSuccessDialog('Dépôt effectué avec succès ✅');
+                  }
+                } else {
+                  // Vérifier aussi le solde directement
+                  final data = await ApiService.verifyDeposits(userId);
+                  final newBalance = double.tryParse(data['balance'].toString()) ?? 0;
+                  if (mounted) {
+                    setState(() => totalBalance = newBalance);
+                    Navigator.pop(ctx);
+                    if (newBalance > 0) {
+                      _showSuccessDialog('Solde mis à jour : ${newBalance.toStringAsFixed(0)} FCFA ✅');
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Le paiement est en cours de traitement. Réessaie dans quelques secondes.'), backgroundColor: Colors.orange),
+                      );
+                    }
+                  }
                 }
-              } catch (_) {
-                Navigator.pop(ctx);
-                _loadData(); // Just refresh
+              } catch (e) {
+                _loadData();
+                if (mounted) Navigator.pop(ctx);
               }
             },
             child: const Text("J'AI PAYÉ — VÉRIFIER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),

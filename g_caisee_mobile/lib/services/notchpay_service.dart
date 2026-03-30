@@ -17,7 +17,8 @@ class NotchPayService {
     required String phone,
     required String name,
   }) async {
-    final res = await ApiService.initiatePayment(userId, phone, amount, name: name);
+    final reference = 'DEP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
+    final res = await ApiService.initiatePayment(userId, phone, amount, name: name, reference: reference);
     final paymentUrl = res['payment_url'] as String?;
     if (paymentUrl == null) throw Exception("URL de paiement manquante");
 
@@ -26,7 +27,7 @@ class NotchPayService {
       throw Exception("Impossible d'ouvrir la page de paiement");
     }
     // Retourner la référence pour vérification du statut
-    return res['reference'] as String? ?? '';
+    return reference;
   }
 
   // ── RECHARGE AIRTIME / DATA ───────────────────────────────────────────────

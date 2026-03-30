@@ -115,22 +115,24 @@ class ApiService {
   // 2. FINANCE (Inchangé)
   // ==========================================
 
-  static Future<Map<String, dynamic>> initiatePayment(int userId, String phone, double amount, {String? name}) async {
+  static Future<Map<String, dynamic>> initiatePayment(int userId, String phone, double amount, {String? name, String? reference}) async {
     final headers = await _authHeaders();
+    final body = {
+      'user_id': userId,
+      'phone': phone,
+      'amount': amount,
+      'email': "user$userId@gcaisse.com",
+      'name': name ?? "Membre G-Caisse",
+    };
+    if (reference != null) body['reference'] = reference;
     final response = await http.post(
       Uri.parse('$baseUrl/deposit'),
       headers: headers,
-      body: jsonEncode({
-        'user_id': userId,
-        'phone': phone,
-        'amount': amount,
-        'email': "user$userId@gcaisse.com",
-        'name': name ?? "Membre G-Caisse",
-      }),
+      body: jsonEncode(body),
     ).timeout(const Duration(seconds: 30));
-    final body = jsonDecode(response.body);
-    if (response.statusCode == 200 && body['payment_url'] != null) return body;
-    throw Exception(body['details'] ?? body['error'] ?? body['message'] ?? 'Erreur dépôt');
+    final resBody = jsonDecode(response.body);
+    if (response.statusCode == 200 && resBody['payment_url'] != null) return resBody;
+    throw Exception(resBody['details'] ?? resBody['error'] ?? resBody['message'] ?? 'Erreur dépôt');
   }
 
   static Future<Map<String, dynamic>> checkDepositStatus(String reference) async {
