@@ -133,6 +133,13 @@ class ApiService {
     throw Exception(body['details'] ?? body['error'] ?? body['message'] ?? 'Erreur dépôt');
   }
 
+  static Future<Map<String, dynamic>> checkDepositStatus(String reference) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/deposit/status/$reference'), headers: headers).timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {'status': 'pending'};
+  }
+
   static Future<Map<String, dynamic>> processPayout({required int userId, required double amount, required String phone, required String name, String? channel}) async {
     final headers = await _authHeaders();
     final res = await http.post(Uri.parse('$baseUrl/payout'), headers: headers, body: jsonEncode({"user_id": userId, "amount": amount, "phone": phone, "name": name, "channel": channel ?? "cm.mobile"})).timeout(const Duration(seconds: 60));

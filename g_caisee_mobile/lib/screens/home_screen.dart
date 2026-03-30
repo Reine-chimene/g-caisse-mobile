@@ -289,21 +289,19 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       if (isDeposit) {
         // Ouvre la page Notch Pay dans le navigateur
-        await NotchPayService.deposit(
+        final reference = await NotchPayService.deposit(
           context: context,
           userId: myId,
           amount: amount,
           phone: phone,
           name: widget.userData['fullname'] ?? 'Membre G-Caisse',
         );
-        if (mounted) {
+        if (mounted && reference.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Page de paiement ouverte. Votre solde sera crédité après confirmation ✅'),
-              backgroundColor: Colors.blue,
-              duration: Duration(seconds: 4),
-            ),
+            const SnackBar(content: Text('Paie dans le navigateur, puis reviens ici...'), backgroundColor: Colors.blue, duration: Duration(seconds: 3)),
           );
+          // Vérifier le statut du dépôt après retour (polling)
+          await _pollDepositStatus(reference, amount);
         }
       } else {
         final result = await ApiService.processPayout(
@@ -322,11 +320,36 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
             'failed':   'Retrait échoué, votre solde a été restitué ❌',
           }[status] ?? 'Retrait initié sur $phone';
           _showSuccessDialog(statusMsg);
-          _loadData(); // Rafraîchir le solde après retrait
+          _loadData();
         }
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : ${e.toString().replaceAll('Exception:', '')}"), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _pollDepositStatus(String reference, double amount) async {
+    // Vérifie le statut du dépôt 6 fois (30 secondes max)
+    for (int i = 0; i < 6; i++) {
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      try {
+        final status = await ApiService.checkDepositStatus(reference);
+        if (status['status'] == 'complete') {
+          _loadData(); // Rafraîchir le solde
+          if (mounted) {
+            _showSuccessDialog('Dépôt de ${amount.toStringAsFixed(0)} FCFA effectué avec succès ✅');
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+    // Si toujours pas confirmé après 30s, rafraîchir quand même
+    _loadData();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dépôt en cours de traitement. Ton solde sera mis à jour sous peu.'), backgroundColor: Colors.orange, duration: Duration(seconds: 4)),
+      );
     }
   }
 

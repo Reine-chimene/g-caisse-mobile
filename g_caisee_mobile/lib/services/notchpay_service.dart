@@ -9,7 +9,8 @@ class NotchPayService {
 
   // ── DÉPÔT ────────────────────────────────────────────────────────────────
 
-  static Future<bool> deposit({
+  /// Retourne la référence du paiement pour vérification ultérieure
+  static Future<String> deposit({
     required BuildContext context,
     required int userId,
     required double amount,
@@ -24,8 +25,8 @@ class NotchPayService {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw Exception("Impossible d'ouvrir la page de paiement");
     }
-    // Le webhook backend crédite automatiquement après confirmation
-    return true;
+    // Retourner la référence pour vérification du statut
+    return res['reference'] as String? ?? '';
   }
 
   // ── RECHARGE AIRTIME / DATA ───────────────────────────────────────────────
