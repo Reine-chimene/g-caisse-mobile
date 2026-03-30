@@ -289,19 +289,15 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
 
       if (isDeposit) {
         // Ouvre la page Notch Pay dans le navigateur
-        final reference = await NotchPayService.deposit(
+        await NotchPayService.deposit(
           context: context,
           userId: myId,
           amount: amount,
           phone: phone,
           name: widget.userData['fullname'] ?? 'Membre G-Caisse',
         );
-        if (mounted && reference.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Paie dans le navigateur, puis reviens ici...'), backgroundColor: Colors.blue, duration: Duration(seconds: 3)),
-          );
-          // Vérifier le statut du dépôt après retour (polling)
-          await _pollDepositStatus(reference, amount);
+        if (mounted) {
+          _showDepositWaitingDialog(myId);
         }
       } else {
         final result = await ApiService.processPayout(
@@ -328,29 +324,45 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     }
   }
 
-  Future<void> _pollDepositStatus(String reference, double amount) async {
-    // Vérifie le statut du dépôt 6 fois (30 secondes max)
-    for (int i = 0; i < 6; i++) {
-      await Future.delayed(const Duration(seconds: 5));
-      if (!mounted) return;
-      try {
-        final status = await ApiService.checkDepositStatus(reference);
-        if (status['status'] == 'complete') {
-          _loadData(); // Rafraîchir le solde
-          if (mounted) {
-            _showSuccessDialog('Dépôt de ${amount.toStringAsFixed(0)} FCFA effectué avec succès ✅');
-          }
-          return;
-        }
-      } catch (_) {}
-    }
-    // Si toujours pas confirmé après 30s, rafraîchir quand même
-    _loadData();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dépôt en cours de traitement. Ton solde sera mis à jour sous peu.'), backgroundColor: Colors.orange, duration: Duration(seconds: 4)),
-      );
-    }
+  void _showDepositWaitingDialog(int userId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(color: AppTheme.primary),
+          const SizedBox(height: 20),
+          const Text("Paiement en cours...", style: TextStyle(color: AppTheme.textLight, fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          const Text("Complète le paiement dans le navigateur, puis reviens ici et clique sur J'AI PAYÉ.",
+            textAlign: TextAlign.center, style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+        ]),
+        actions: [
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            onPressed: () async {
+              // Vérifier le solde via l'API
+              try {
+                final data = await ApiService.verifyDeposits(userId);
+                final balance = double.tryParse(data['balance'].toString()) ?? 0;
+                if (mounted) {
+                  setState(() => totalBalance = balance);
+                  Navigator.pop(ctx);
+                  _showSuccessDialog('Dépôt effectué ! Solde : ${balance.toStringAsFixed(0)} FCFA ✅');
+                }
+              } catch (_) {
+                Navigator.pop(ctx);
+                _loadData(); // Just refresh
+              }
+            },
+            child: const Text("J'AI PAYÉ — VÉRIFIER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          )),
+          TextButton(onPressed: () { Navigator.pop(ctx); _loadData(); }, child: const Text("Fermer", style: TextStyle(color: AppTheme.textMuted))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -458,10 +470,21 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   Text('Solde Principal', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 ],
               ),
-              GestureDetector(
-                onTap: () => setState(() => _isBalanceVisible = !_isBalanceVisible),
-                child: Icon(_isBalanceVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.white70, size: 20),
-              ),
+              Row(children: [
+                GestureDetector(
+                  onTap: () { _loadData(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solde rafraîchi...'), backgroundColor: AppTheme.primary, duration: Duration(seconds: 1), behavior: SnackBarBehavior.floating)); },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() => _isBalanceVisible = !_isBalanceVisible),
+                  child: Icon(_isBalanceVisible ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.white70, size: 20),
+                ),
+              ]),
             ],
           ),
           const SizedBox(height: 14),

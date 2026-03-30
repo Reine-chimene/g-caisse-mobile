@@ -49,7 +49,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> with Single
   void initState() {
     super.initState();
     _currentTontine = Map<String, dynamic>.from(widget.tontine);
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _refreshData();
   }
 
@@ -187,6 +187,7 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> with Single
             Tab(icon: Icon(Icons.info_outline), text: "Détails"),
             Tab(icon: Icon(Icons.chat_bubble_outline), text: "Chat"),
             Tab(icon: Icon(Icons.people_outline), text: "Social"),
+            Tab(icon: Icon(Icons.folder_outlined), text: "Docs"),
           ],
         ),
       ),
@@ -222,8 +223,62 @@ class _TontineDetailsScreenState extends State<TontineDetailsScreen> with Single
           ),
           // 3. Onglet Social
           SocialScreen(tontineId: _currentTontine['id'], userId: widget.userId),
+          // 4. Onglet Documents
+          _buildDocumentsTab(),
         ],
       ),
+    );
+  }
+
+  // --- WIDGET : DOCUMENTS ---
+  Widget _buildDocumentsTab() {
+    final docs = [
+      {'name': 'Règlement intérieur', 'icon': Icons.description_rounded, 'type': 'PDF'},
+      {'name': 'Liste des membres', 'icon': Icons.people_rounded, 'type': 'PDF'},
+      {'name': 'Historique des paiements', 'icon': Icons.receipt_long_rounded, 'type': 'PDF'},
+      {'name': 'Calendrier des tours', 'icon': Icons.calendar_month_rounded, 'type': 'PDF'},
+      {'name': 'Attestation de participation', 'icon': Icons.verified_user_rounded, 'type': 'PDF'},
+    ];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text("Documents", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        const Text("Télécharge les documents liés à cette tontine", style: TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 20),
+        ...docs.map((doc) => Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: darkCardColor, borderRadius: BorderRadius.circular(16)),
+          child: Row(children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+              child: Icon(doc['icon'] as IconData, color: primaryColor, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(doc['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+              Text("${doc['type']} · Disponible", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ])),
+            GestureDetector(
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text("Génération de ${doc['name']}..."),
+                  backgroundColor: primaryColor,
+                  behavior: SnackBarBehavior.floating,
+                ));
+              },
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.download_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+          ]),
+        )),
+      ]),
     );
   }
 
