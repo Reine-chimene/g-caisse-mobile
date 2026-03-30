@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/notchpay_service.dart';
 import '../services/api_service.dart';
-import '../services/pdf_receipt_service.dart';
+import '../theme/app_theme.dart';
 
 class BillPaymentScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -12,506 +11,209 @@ class BillPaymentScreen extends StatefulWidget {
 }
 
 class _BillPaymentScreenState extends State<BillPaymentScreen> {
-  final _contractController = TextEditingController();
-  final _amountController   = TextEditingController();
-
-  String _selectedBill     = 'ENEO';
+  final _contractCtrl = TextEditingController();
+  final _amountCtrl = TextEditingController();
+  String _selectedBill = 'ENEO';
   String _selectedOperator = 'cm.mtn';
-  bool   _isLoading        = false;
+  bool _isLoading = false;
 
-  @override
-  void dispose() {
-    _contractController.dispose();
-    _amountController.dispose();
-    super.dispose();
-  }
+  static const _bills = [
+    {'key': 'ENEO', 'label': 'ENEO', 'icon': Icons.bolt_rounded, 'color': Color(0xFFFBBF24), 'hint': 'Numéro de compteur'},
+    {'key': 'CAMWATER', 'label': 'CamWater', 'icon': Icons.water_drop_rounded, 'color': Color(0xFF3B82F6), 'hint': 'Numéro de police'},
+    {'key': 'CANAL', 'label': 'Canal+', 'icon': Icons.tv_rounded, 'color': Color(0xFF1E1E1E), 'hint': 'Numéro abonné'},
+    {'key': 'INTERNET', 'label': 'Internet', 'icon': Icons.wifi_rounded, 'color': Color(0xFF8B5CF6), 'hint': 'Numéro de compte'},
+  ];
 
-  double get _amount => double.tryParse(_amountController.text) ?? 0.0;
-  double get _fees   => _amount * 0.02;
-  double get _total  => _amount + _fees;
+  Map<String, dynamic> get _bill => _bills.firstWhere((b) => b['key'] == _selectedBill, orElse: () => _bills.first);
 
-  Color get _mainColor =>
-      _selectedBill == 'ENEO' ? Colors.yellow.shade800 : Colors.blue.shade800;
+  double get _amount => double.tryParse(_amountCtrl.text) ?? 0;
+  String get _opLabel => _selectedOperator == 'cm.mtn' ? 'MTN MoMo' : 'Orange Money';
 
-  // ── CONFIRMATION ────────────────────────────────────────
-
-  void _showConfirmationSheet() {
-    if (_contractController.text.isEmpty || _amount < 500) {
-      _showMsg("Veuillez remplir correctement les champs", Colors.red);
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-                width: 50,
-                height: 5,
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            const Text("Confirmation du Paiement",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            _confirmRow("Service", _selectedBill),
-            _confirmRow("Référence contrat", _contractController.text),
-            _confirmRow("Opérateur",
-                _selectedOperator == 'cm.mtn' ? 'MTN MoMo' : 'Orange Money'),
-            _confirmRow("Numéro Mobile Money",
-                widget.userData['phone']?.toString() ?? ''),
-            _confirmRow("Montant facture", "${_amount.toInt()} FCFA"),
-            _confirmRow("Frais service (2%)", "${_fees.toInt()} FCFA"),
-            const Divider(),
-            _confirmRow("Total à débiter", "${_total.toInt()} FCFA",
-                isTotal: true),
-            const SizedBox(height: 16),
-            // Info paiement
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      "Tu seras redirigé vers Orange Money ou MTN MoMo pour payer ta facture.",
-                      style: TextStyle(fontSize: 12, color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _mainColor,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15)),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _handlePayment();
-                },
-                child: const Text("PAYER MAINTENANT",
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _confirmRow(String label, String value, {bool isTotal = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: TextStyle(
-                  color: Colors.grey[600], fontSize: isTotal ? 16 : 14)),
-          Text(value,
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isTotal ? 18 : 15,
-                  color: isTotal ? Colors.black : Colors.grey[800])),
-        ],
-      ),
-    );
-  }
-
-  // ── PAIEMENT ────────────────────────────────────────────
-
-  Future<void> _handlePayment() async {
+  Future<void> _pay() async {
+    if (_contractCtrl.text.isEmpty || _amount < 100) { _showMsg("Remplis tous les champs (min 100 F)", AppTheme.error); return; }
     setState(() => _isLoading = true);
     try {
-      final res = await NotchPayService.payBill(
-        context:        context,
-        userId:         int.tryParse(widget.userData['id'].toString()) ?? 0,
-        contractNumber: _contractController.text,
-        amount:         _amount,
-        billType:       _selectedBill,
-        phone:          widget.userData['phone']?.toString() ?? '',
-        operator:       _selectedOperator,
+      await ApiService.payBill(
+        userId: int.tryParse(widget.userData['id'].toString()) ?? 0,
+        contractNumber: _contractCtrl.text,
+        amount: _amount,
+        billType: _selectedBill,
+        phone: widget.userData['phone']?.toString() ?? '',
+        operator: _selectedOperator,
       );
       if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      // Afficher le dialog d'attente après ouverture de la page de paiement
-      final reference = res['reference'] as String?;
-      if (reference != null) {
-        _showWaitingDialog(reference);
-      } else {
-        _showSuccessDialog(res);
-      }
+      _showSuccess();
     } catch (e) {
-      if (mounted) _showMsg(e.toString().replaceFirst('Exception: ', ''), Colors.red);
+      if (mounted) _showMsg(e.toString().replaceAll('Exception: ', ''), AppTheme.error);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showWaitingDialog(String reference) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(color: Color(0xFFFF7900)),
-            const SizedBox(height: 20),
-            Text("Paiement $_selectedBill en cours...", style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text("Réf: $reference", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            const SizedBox(height: 15),
-            const Text("Paie via Orange Money ou MTN MoMo dans le navigateur, puis reviens ici.",
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FERMER")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _mainColor),
-            onPressed: () async {
-              try {
-                final status = await ApiService.getDirectTransferStatus(reference);
-                if (status['status'] == 'completed') {
-                  Navigator.pop(ctx);
-                  _showSuccessDialog({'reference': reference});
-                } else if (status['status'] == 'failed') {
-                  Navigator.pop(ctx);
-                  _showMsg("Le paiement a échoué", Colors.red);
-                } else {
-                  _showMsg("Paiement en attente. Termine le paiement d'abord.", Colors.orange);
-                }
-              } catch (e) {
-                _showMsg("Erreur de vérification", Colors.red);
-              }
-            },
-            child: const Text("J'AI PAYÉ", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  void _showMsg(String m, Color c) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
+
+  void _showSuccess() {
+    final bill = _bill;
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: AppTheme.darkCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.check_circle_rounded, color: bill['color'] as Color, size: 72),
+        const SizedBox(height: 16),
+        Text("Facture ${bill['label']} payée !", style: const TextStyle(color: AppTheme.textLight, fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text("${_amount.toStringAsFixed(0)} FCFA payés via $_opLabel", textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+      ]),
+      actions: [SizedBox(width: double.infinity, child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: bill['color'] as Color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        onPressed: () { Navigator.pop(ctx); Navigator.pop(context); },
+        child: const Text("TERMINER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      ))],
+    ));
   }
-
-  // ── DIALOGS ─────────────────────────────────────────────
-
-  void _showSuccessDialog(Map transaction) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        title: const Icon(Icons.verified, color: Colors.green, size: 70),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Paiement Réussi !",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(
-              "Votre facture $_selectedBill de ${_amount.toInt()} F a été réglée avec succès.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
-        ),
-        actions: [
-          Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12))),
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await PdfReceiptService.generateAndPrintReceipt(
-                        Map<String, dynamic>.from(transaction));
-                  },
-                  child: const Text("TÉLÉCHARGER LE REÇU PDF",
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ),
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text("TERMINER")),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  // ── BUILD ────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final bill = _bill;
+    final color = bill['color'] as Color;
+
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text("Paiement $_selectedBill",
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: _mainColor,
-        elevation: 0,
-      ),
+      backgroundColor: AppTheme.dark,
+      appBar: AppBar(title: const Text("Paiement Factures", style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: AppTheme.dark, foregroundColor: AppTheme.textLight, elevation: 0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Sélecteur fournisseur ──
-            const Text("Choisissez le fournisseur",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                _billChip("ENEO", Icons.bolt, Colors.yellow.shade800),
-                const SizedBox(width: 15),
-                _billChip("CAMWATER", Icons.water_drop, Colors.blue.shade800),
-              ],
-            ),
-            const SizedBox(height: 25),
-
-            // ── Sélecteur opérateur ──
-            const Text("Opérateur Mobile Money",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _operatorChip("cm.mtn", "MTN MoMo", 'assets/logo_mtn.jpg',
-                    Colors.yellow.shade700),
-                const SizedBox(width: 15),
-                _operatorChip("cm.orange", "Orange Money",
-                    'assets/logo_orange.jpg', Colors.orange),
-              ],
-            ),
-            const SizedBox(height: 25),
-
-            // ── Numéro de contrat ──
-            TextField(
-              controller: _contractController,
-              decoration: InputDecoration(
-                labelText: _selectedBill == 'ENEO'
-                    ? "Numéro de Contrat / Compteur"
-                    : "Numéro de Police / Client",
-                prefixIcon: Icon(Icons.receipt_long, color: _mainColor),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: _mainColor, width: 2),
-                    borderRadius: BorderRadius.circular(15)),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Montant ──
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: "Montant à régler",
-                prefixIcon:
-                    Icon(Icons.monetization_on_outlined, color: _mainColor),
-                suffixText: "FCFA",
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: _mainColor, width: 2),
-                    borderRadius: BorderRadius.circular(15)),
-              ),
-            ),
-            const SizedBox(height: 25),
-
-            _buildPricingCard(),
-            const SizedBox(height: 16),
-
-            // Info paiement
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade100),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      "Le paiement se fait directement via Orange Money ou MTN MoMo.",
-                      style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _mainColor,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15)),
-                  elevation: 5,
-                ),
-                onPressed: _isLoading ? null : _showConfirmationSheet,
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("VALIDER LE PAIEMENT",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
-              ),
-            ),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _buildBillSelector(),
+          const SizedBox(height: 24),
+          _buildOperatorSelector(),
+          const SizedBox(height: 24),
+          _field(_contractCtrl, bill['hint'] as String, bill['icon'] as IconData, color),
+          const SizedBox(height: 14),
+          _field(_amountCtrl, "Montant (FCFA)", Icons.monetization_on_rounded, color, TextInputType.number, (_) => setState(() {})),
+          const SizedBox(height: 24),
+          _buildSummary(color),
+          const SizedBox(height: 24),
+          SizedBox(width: double.infinity, height: 56, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+            onPressed: _isLoading ? null : _pay,
+            child: _isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Text("PAYER ${_amount > 0 ? '${_amount.toStringAsFixed(0)} F' : ''}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+          )),
+          const SizedBox(height: 16),
+          _buildInfoBox(),
+        ]),
       ),
     );
   }
 
-  // ── WIDGETS ──────────────────────────────────────────────
-
-  Widget _buildPricingCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        children: [
-          _summaryRow("Montant net", "${_amount.toInt()} F"),
-          _summaryRow("Frais service (2%)", "+ ${_fees.toInt()} F",
-              color: Colors.orange),
-          const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
-          _summaryRow("TOTAL DÉBITÉ", "${_total.toInt()} F", bold: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _billChip(String name, IconData icon, Color color) {
-    final isSel = _selectedBill == name;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedBill = name),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSel ? color : Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: color, width: 1.5),
-          boxShadow: isSel
-              ? [BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 10)]
-              : [],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSel ? Colors.white : color, size: 22),
-            const SizedBox(width: 10),
-            Text(name,
-                style: TextStyle(
-                    color: isSel ? Colors.white : color,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _operatorChip(
-      String value, String label, String logoPath, Color color) {
-    final isSel = _selectedOperator == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedOperator = value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-          decoration: BoxDecoration(
-            color: isSel ? color.withValues(alpha: 0.1) : Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-                color: isSel ? color : Colors.grey.shade300, width: 1.5),
+  Widget _buildBillSelector() {
+    return SizedBox(height: 90, child: ListView.builder(
+      scrollDirection: Axis.horizontal,
+      itemCount: _bills.length,
+      itemBuilder: (context, i) {
+        final b = _bills[i];
+        final isSel = _selectedBill == b['key'];
+        final color = b['color'] as Color;
+        return GestureDetector(
+          onTap: () => setState(() => _selectedBill = b['key'] as String),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 100, margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isSel ? color.withValues(alpha: 0.12) : AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: isSel ? color : Colors.transparent, width: 2),
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(b['icon'] as IconData, color: isSel ? color : AppTheme.textMuted, size: 28),
+              const SizedBox(height: 8),
+              Text(b['label'] as String, style: TextStyle(color: isSel ? color : AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: 11)),
+            ]),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(logoPath,
-                  width: 28,
-                  height: 28,
-                  errorBuilder: (_, __, ___) =>
-                      Icon(Icons.phone_android, color: color)),
+        );
+      },
+    ));
+  }
+
+  Widget _buildOperatorSelector() {
+    return Row(children: [
+      {'key': 'cm.mtn', 'label': 'MTN MoMo', 'logo': 'assets/logo_mtn.jpg', 'color': const Color(0xFFFFCC00)},
+      {'key': 'cm.orange', 'label': 'Orange Money', 'logo': 'assets/logo_orange.jpg', 'color': const Color(0xFFFF7900)},
+    ].map((op) {
+      final isSel = _selectedOperator == op['key'];
+      final color = op['color'] as Color;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _selectedOperator = op['key'] as String),
+          child: Container(
+            margin: EdgeInsets.only(right: op['key'] == 'cm.mtn' ? 10 : 0, left: op['key'] == 'cm.orange' ? 10 : 0),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+            decoration: BoxDecoration(
+              color: isSel ? color.withValues(alpha: 0.1) : AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isSel ? color : Colors.transparent, width: 2),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Image.asset(op['logo'] as String, width: 28, height: 28, errorBuilder: (_, __, ___) => Icon(Icons.phone_android, color: color, size: 28)),
               const SizedBox(width: 8),
-              Flexible(
-                child: Text(label,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isSel ? color : Colors.black87)),
-              ),
-            ],
+              Flexible(child: Text(op['label'] as String, style: TextStyle(color: isSel ? color : AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: 12))),
+            ]),
           ),
         ),
+      );
+    }).toList());
+  }
+
+  Widget _buildSummary(Color color) {
+    final fees = _amount * 0.02;
+    final total = _amount + fees;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(20)),
+      child: Column(children: [
+        _row("Montant", "${_amount.toStringAsFixed(0)} F"),
+        _row("Frais (2%)", "+ ${fees.toStringAsFixed(0)} F", color: AppTheme.warning),
+        const Divider(color: AppTheme.darkSurface, height: 24),
+        _row("TOTAL", "${total.toStringAsFixed(0)} F", bold: true, color: color),
+      ]),
+    );
+  }
+
+  Widget _row(String label, String value, {Color color = AppTheme.textLight, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+        Text(value, style: TextStyle(color: color, fontWeight: bold ? FontWeight.w800 : FontWeight.w600, fontSize: bold ? 18 : 14)),
+      ]),
+    );
+  }
+
+  Widget _buildInfoBox() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        const Icon(Icons.info_outline_rounded, color: AppTheme.textMuted, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text("Le paiement se fait via $_opLabel. Le montant est débité de ton solde G-Caisse.", style: const TextStyle(color: AppTheme.textMuted, fontSize: 12))),
+      ]),
+    );
+  }
+
+  Widget _field(TextEditingController ctrl, String hint, IconData icon, Color color, [TextInputType type = TextInputType.text, ValueChanged<String>? onChanged]) {
+    return TextField(
+      controller: ctrl, keyboardType: type, onChanged: onChanged,
+      style: const TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w600),
+      decoration: InputDecoration(
+        hintText: hint, hintStyle: const TextStyle(color: AppTheme.textMuted),
+        prefixIcon: Icon(icon, color: AppTheme.textMuted),
+        filled: true, fillColor: AppTheme.darkCard,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       ),
     );
   }
-
-  Widget _summaryRow(String label, String value,
-      {Color color = Colors.black, bool bold = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: TextStyle(
-                color: Colors.grey.shade700,
-                fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
-        Text(value,
-            style: TextStyle(
-                color: color,
-                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-                fontSize: bold ? 18 : 14)),
-      ],
-    );
-  }
-
-  void _showMsg(String m, Color c) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(
-          content: Text(m),
-          backgroundColor: c,
-          behavior: SnackBarBehavior.floating));
 }

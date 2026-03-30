@@ -607,4 +607,138 @@ class ApiService {
       body: jsonEncode({"video_url": videoUrl}),
     );
   }
+
+  // ═══════════ NOUVELLES FONCTIONNALITÉS ═══════════
+
+  // ── 1. DEMANDE D'ARGENT ──
+  static Future<Map<String, dynamic>> requestMoney({
+    required String receiverPhone, required double amount, String? message,
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/money-request'), headers: headers,
+      body: jsonEncode({"receiver_phone": receiverPhone, "amount": amount, "message": message ?? ''}),
+    ).timeout(const Duration(seconds: 30));
+    final body = jsonDecode(res.body);
+    if (res.statusCode == 201) return body;
+    throw Exception(body['message'] ?? "Erreur demande");
+  }
+
+  static Future<List<dynamic>> getIncomingMoneyRequests() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/money-request/incoming'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return [];
+  }
+
+  static Future<List<dynamic>> getOutgoingMoneyRequests() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/money-request/outgoing'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return [];
+  }
+
+  static Future<void> acceptMoneyRequest(int id) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/money-request/$id/accept'), headers: headers);
+    final body = jsonDecode(res.body);
+    if (res.statusCode != 200) throw Exception(body['message'] ?? "Erreur");
+  }
+
+  static Future<void> declineMoneyRequest(int id) async {
+    final headers = await _authHeaders();
+    await http.post(Uri.parse('$baseUrl/money-request/$id/decline'), headers: headers);
+  }
+
+  // ── 2. PARTAGE DE DÉPENSES ──
+  static Future<Map<String, dynamic>> createSplitBill({
+    required String title, required double totalAmount,
+    required List<Map<String, dynamic>> participants, String splitType = 'equal',
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/split-bill'), headers: headers,
+      body: jsonEncode({"title": title, "total_amount": totalAmount, "participants": participants, "split_type": splitType}),
+    ).timeout(const Duration(seconds: 30));
+    final body = jsonDecode(res.body);
+    if (res.statusCode == 201) return body;
+    throw Exception(body['message'] ?? "Erreur partage");
+  }
+
+  static Future<List<dynamic>> getMySplitBills() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/split-bill/my'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return [];
+  }
+
+  static Future<void> paySplitBill(int billId) async {
+    final headers = await _authHeaders();
+    final res = await http.post(Uri.parse('$baseUrl/split-bill/$billId/pay'), headers: headers);
+    final body = jsonDecode(res.body);
+    if (res.statusCode != 200) throw Exception(body['message'] ?? "Erreur paiement");
+  }
+
+  // ── 3. ÉPARGNE AUTOMATIQUE ──
+  static Future<void> setRoundUp(int userId, bool enabled) async {
+    final headers = await _authHeaders();
+    await http.put(
+      Uri.parse('$baseUrl/users/$userId/round-up-settings'), headers: headers,
+      body: jsonEncode({"enabled": enabled}),
+    );
+  }
+
+  static Future<Map<String, dynamic>> getRoundUpStats(int userId) async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/users/$userId/round-up-stats'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"enabled": false, "total_saved": 0, "transaction_count": 0};
+  }
+
+  // ── 4. NOTIFICATIONS ──
+  static Future<Map<String, dynamic>> getNotifications() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/notifications'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"notifications": [], "unread_count": 0};
+  }
+
+  static Future<void> markNotificationRead(int id) async {
+    final headers = await _authHeaders();
+    await http.put(Uri.parse('$baseUrl/notifications/$id/read'), headers: headers);
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    final headers = await _authHeaders();
+    await http.put(Uri.parse('$baseUrl/notifications/read-all'), headers: headers);
+  }
+
+  // ── 5. PAIEMENTS PROGRAMMÉS ──
+  static Future<Map<String, dynamic>> createScheduledPayment({
+    required String paymentType, int? targetId, required double amount,
+    String frequency = 'monthly', required String nextPaymentDate, String? description,
+  }) async {
+    final headers = await _authHeaders();
+    final res = await http.post(
+      Uri.parse('$baseUrl/scheduled-payment'), headers: headers,
+      body: jsonEncode({
+        "payment_type": paymentType, "target_id": targetId, "amount": amount,
+        "frequency": frequency, "next_payment_date": nextPaymentDate, "description": description ?? '',
+      }),
+    ).timeout(const Duration(seconds: 30));
+    if (res.statusCode == 201) return jsonDecode(res.body);
+    throw Exception("Erreur création paiement programmé");
+  }
+
+  static Future<List<dynamic>> getMyScheduledPayments() async {
+    final headers = await _authHeaders();
+    final res = await http.get(Uri.parse('$baseUrl/scheduled-payment/my'), headers: headers);
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return [];
+  }
+
+  static Future<void> cancelScheduledPayment(int id) async {
+    final headers = await _authHeaders();
+    await http.delete(Uri.parse('$baseUrl/scheduled-payment/$id'), headers: headers);
+  }
 }

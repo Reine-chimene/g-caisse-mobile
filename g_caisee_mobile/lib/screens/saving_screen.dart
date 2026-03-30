@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class SavingScreen extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -10,318 +11,277 @@ class SavingScreen extends StatefulWidget {
 }
 
 class _SavingScreenState extends State<SavingScreen> {
-  final Color gold = const Color(0xFFD4AF37);
-  final Color darkBlue = const Color(0xFF1A1A2E); 
-  final Color cardGrey = const Color(0xFF252525);
-
-  double savingsBalance = 0.0; 
-  double mainBalance = 0.0;    
+  double savingsBalance = 0.0;
+  double mainBalance = 0.0;
+  double roundUpSaved = 0.0;
   List<dynamic> transactions = [];
   bool isLoading = true;
+  bool roundUpEnabled = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchRealData();
+    _fetchData();
   }
 
-  // Formateur de prix (ex: 100 000)
-  String _fmf(double amount) => amount.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
-
-  Future<void> _fetchRealData() async {
+  Future<void> _fetchData() async {
     try {
-      int userId = widget.userData?['id'] ?? 0; 
+      final userId = int.tryParse(widget.userData?['id'].toString() ?? '0') ?? 0;
       if (userId == 0) return;
-
-      final balance = await ApiService.getUserBalance(userId);
-      final sBalance = await ApiService.getSavingsBalance(userId);
-      final txHistory = await ApiService.getSavingsTransactions(userId);
-      
-      if (mounted) {
-        setState(() {
-          mainBalance = balance;
-          savingsBalance = sBalance;
-          transactions = txHistory;
-          isLoading = false;
-        });
-      }
+      final results = await Future.wait([
+        ApiService.getUserBalance(userId),
+        ApiService.getSavingsBalance(userId),
+        ApiService.getSavingsTransactions(userId),
+        ApiService.getRoundUpStats(userId),
+      ]);
+      if (mounted) setState(() {
+        mainBalance = results[0] as double;
+        savingsBalance = results[1] as double;
+        transactions = results[2] as List<dynamic>;
+        final stats = results[3] as Map<String, dynamic>;
+        roundUpSaved = double.tryParse(stats['total_saved'].toString()) ?? 0;
+        roundUpEnabled = stats['enabled'] ?? false;
+        isLoading = false;
+      });
     } catch (e) {
       if (mounted) setState(() => isLoading = false);
-      debugPrint("Erreur Sync Épargne: $e");
     }
   }
 
-  void _showTransactionDialog(bool isDeposit) {
-    final TextEditingController amountController = TextEditingController();
-    
+  String _fmt(double v) => v.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ');
+
+  void _showTxDialog(bool isDeposit) {
+    final ctrl = TextEditingController();
     showModalBottomSheet(
       context: context,
-      backgroundColor: darkBlue,
+      backgroundColor: AppTheme.darkCard,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 30,
-          left: 25, right: 25, top: 25
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            Text(isDeposit ? "ALIMENTER LE COFFRE" : "RETRAIT DU COFFRE", 
-              style: TextStyle(color: gold, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(
-              isDeposit 
-                ? "Disponible : ${_fmf(mainBalance)} FCFA" 
-                : "Épargne actuelle : ${_fmf(savingsBalance)} FCFA",
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 30, left: 24, right: 24, top: 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.textMuted, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 24),
+          Text(isDeposit ? "ALIMENTER L'ÉPARGNE" : "RETIRER DE L'ÉPARGNE",
+              style: const TextStyle(color: AppTheme.textLight, fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Text(isDeposit ? "Solde disponible : ${_fmt(mainBalance)} FCFA" : "Épargne : ${_fmt(savingsBalance)} FCFA",
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          const SizedBox(height: 24),
+          TextField(
+            controller: ctrl, keyboardType: TextInputType.number, autofocus: true, textAlign: TextAlign.center,
+            style: const TextStyle(color: AppTheme.textLight, fontSize: 28, fontWeight: FontWeight.w800),
+            decoration: InputDecoration(
+              hintText: "0", hintStyle: TextStyle(color: AppTheme.textMuted.withValues(alpha: 0.3)),
+              suffixText: "FCFA", suffixStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 16),
+              filled: true, fillColor: AppTheme.darkSurface,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
             ),
-            if (!isDeposit)
-              Container(
-                margin: const EdgeInsets.only(top: 15),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 18),
-                    SizedBox(width: 10),
-                    Expanded(child: Text("Les retraits d'épargne nécessitent 24h de validation.", style: TextStyle(color: Colors.orange, fontSize: 11))),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 25),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                hintText: "Montant (F)",
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.1)),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold.withOpacity(0.3))),
-                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: gold, width: 2)),
-              ),
-            ),
-            const SizedBox(height: 40),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: gold, 
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
-              ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity, height: 54,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: isDeposit ? AppTheme.success : AppTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
               onPressed: () async {
-                double amount = double.tryParse(amountController.text) ?? 0;
+                final amount = double.tryParse(ctrl.text) ?? 0;
                 if (amount <= 0) return;
-                
-                if (isDeposit && amount > mainBalance) {
-                  _showError("Solde principal insuffisant");
-                  return;
-                }
-
-                Navigator.pop(context);
-                setState(() => isLoading = true);
-
+                if (isDeposit && amount > mainBalance) { _showMsg("Solde insuffisant", AppTheme.error); return; }
+                if (!isDeposit && amount > savingsBalance) { _showMsg("Épargne insuffisante", AppTheme.error); return; }
+                Navigator.pop(ctx);
                 try {
-                  int userId = widget.userData?['id'] ?? 0;
-                  if (isDeposit) {
-                    // initiatePayment ouvre la page Notch Pay pour déposer
-                    final res = await ApiService.initiatePayment(
-                      userId, 
-                      widget.userData?['phone'] ?? '', 
-                      amount,
-                      name: widget.userData?['fullname'] ?? 'Membre G-Caisse',
-                    );
-                    if (res['success'] == true && res['payment_url'] != null && context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Redirection vers la page de paiement..."), backgroundColor: Colors.blue),
-                      );
-                    }
-                  } else {
-                    _showSuccess("Demande de retrait transmise (24h)");
-                  }
-                  _fetchRealData();
+                  final userId = int.tryParse(widget.userData?['id'].toString() ?? '0') ?? 0;
+                  await ApiService.transferMoney(userId, '', amount); // Internal saving transfer
+                  _fetchData();
+                  _showMsg(isDeposit ? "Épargne alimentée !" : "Retrait effectué !", AppTheme.success);
                 } catch (e) {
-                  _showError("Erreur lors de l'opération");
-                } finally {
-                  setState(() => isLoading = false);
+                  _showMsg(e.toString().replaceAll('Exception: ', ''), AppTheme.error);
                 }
               },
-              child: Text(isDeposit ? "CONFIRMER LE DÉPÔT" : "DEMANDER LE RETRAIT", 
-                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              child: Text(isDeposit ? "ÉPARGNER" : "RETIRER", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 10),
+        ]),
       ),
     );
   }
 
-  void _showError(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
-  void _showSuccess(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
+  void _showMsg(String m, Color c) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
+      backgroundColor: AppTheme.dark,
       appBar: AppBar(
-        title: const Text("MON COFFRE-FORT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.white)),
-        backgroundColor: Colors.transparent,
+        title: const Text("Épargne", style: TextStyle(fontWeight: FontWeight.w800)),
+        backgroundColor: AppTheme.dark,
+        foregroundColor: AppTheme.textLight,
         elevation: 0,
-        centerTitle: true,
-        foregroundColor: Colors.white,
       ),
-      body: isLoading 
-        ? Center(child: CircularProgressIndicator(color: gold)) 
-        : RefreshIndicator(
-            onRefresh: _fetchRealData,
-            color: gold,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 30),
-              child: Column(
-                children: [
-                  _buildSavingsCard(),
-                  const SizedBox(height: 10),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.success))
+          : RefreshIndicator(
+              onRefresh: _fetchData,
+              color: AppTheme.success,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const SizedBox(height: 8),
+                  _buildMainCard(),
+                  const SizedBox(height: 20),
                   _buildActionButtons(),
-                  const SizedBox(height: 35),
-                  _buildHistorySection(),
-                ],
+                  const SizedBox(height: 20),
+                  _buildRoundUpCard(),
+                  const SizedBox(height: 24),
+                  _buildHistory(),
+                  const SizedBox(height: 100),
+                ]),
               ),
             ),
-          ),
     );
   }
 
-  Widget _buildSavingsCard() {
+  Widget _buildMainCard() {
     return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(30),
       width: double.infinity,
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: darkBlue,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: gold.withOpacity(0.05), blurRadius: 20, spreadRadius: 5)],
+        gradient: const LinearGradient(colors: [Color(0xFF22C55E), Color(0xFF15803D)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: const Color(0xFF22C55E).withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10))],
       ),
-      child: Column(
-        children: [
-          CircleAvatar(backgroundColor: gold.withOpacity(0.1), radius: 30, child: Icon(Icons.lock_outline, color: gold, size: 30)),
-          const SizedBox(height: 20),
-          const Text("TOTAL ÉPARGNÉ", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.5)),
-          const SizedBox(height: 10),
-          Text("${_fmf(savingsBalance)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.trending_up, color: Colors.green, size: 14),
-                SizedBox(width: 8),
-                Text("Croissance Halal : +3.5% / an", style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
-              ],
-            ),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.savings_rounded, color: Colors.white, size: 24),
           ),
-        ],
-      ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
+            child: const Row(children: [
+              Icon(Icons.trending_up_rounded, color: Colors.white, size: 14),
+              SizedBox(width: 4),
+              Text("+3.5%", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 24),
+        const Text("TOTAL ÉPARGNÉ", style: TextStyle(color: Colors.white70, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Text("${_fmt(savingsBalance)} FCFA", style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1)),
+        const SizedBox(height: 16),
+        Row(children: [
+          _miniStat("Solde principal", "${_fmt(mainBalance)} F"),
+          const SizedBox(width: 24),
+          _miniStat("Round-Up", "${_fmt(roundUpSaved)} F"),
+        ]),
+      ]),
     );
+  }
+
+  Widget _miniStat(String label, String value) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10)),
+      Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+    ]);
   }
 
   Widget _buildActionButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(child: _actionBtn(true, "ÉPARGNER", Icons.add_circle_outline)),
-          const SizedBox(width: 15),
-          Expanded(child: _actionBtn(false, "RETIRER", Icons.outbox_rounded)),
-        ],
-      ),
-    );
+    return Row(children: [
+      Expanded(child: _actionBtn(true, "Épargner", Icons.add_circle_outline_rounded, AppTheme.success)),
+      const SizedBox(width: 14),
+      Expanded(child: _actionBtn(false, "Retirer", Icons.remove_circle_outline_rounded, AppTheme.primary)),
+    ]);
   }
 
-  Widget _actionBtn(bool isDeposit, String label, IconData icon) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isDeposit ? gold : cardGrey,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isDeposit ? Colors.transparent : gold.withOpacity(0.3))),
-      ),
-      onPressed: () => _showTransactionDialog(isDeposit),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: isDeposit ? Colors.black : gold, size: 18),
+  Widget _actionBtn(bool isDeposit, String label, IconData icon, Color color) {
+    return GestureDetector(
+      onTap: () => _showTxDialog(isDeposit),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(18), border: Border.all(color: color.withValues(alpha: 0.25))),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, color: color, size: 20),
           const SizedBox(width: 8),
-          Text(label, style: TextStyle(color: isDeposit ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-        ],
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 14)),
+        ]),
       ),
     );
   }
 
-  Widget _buildHistorySection() {
+  Widget _buildRoundUpCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 25),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("HISTORIQUE RÉCENT", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1)),
-          const SizedBox(height: 20),
-          transactions.isEmpty 
-            ? _buildEmptyHistory()
-            : ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: transactions.length,
-                itemBuilder: (context, i) {
-                  var tx = transactions[i];
-                  bool isAdd = tx['type'].toString().contains('deposit') || tx['type'].toString().contains('saving');
-                  return _buildTransactionItem(tx, isAdd);
-                },
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(20)),
+      child: Row(children: [
+        Container(
+          width: 48, height: 48,
+          decoration: BoxDecoration(color: const Color(0xFF22D3EE).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+          child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF22D3EE), size: 24),
+        ),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text("Round-Up", style: TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w700, fontSize: 14)),
+          Text(roundUpEnabled ? "${_fmt(roundUpSaved)} F épargnés automatiquement" : "Active l'épargne automatique",
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+        ])),
+        Switch(
+          value: roundUpEnabled,
+          onChanged: (v) async {
+            setState(() => roundUpEnabled = v);
+            final userId = int.tryParse(widget.userData?['id'].toString() ?? '0') ?? 0;
+            await ApiService.setRoundUp(userId, v);
+          },
+          activeColor: const Color(0xFF22D3EE),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildHistory() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text("Historique", style: TextStyle(color: AppTheme.textLight, fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 14),
+      if (transactions.isEmpty)
+        Container(
+          width: double.infinity, padding: const EdgeInsets.all(40),
+          decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(20)),
+          child: Column(children: [
+            Icon(Icons.savings_outlined, color: AppTheme.textMuted.withValues(alpha: 0.3), size: 48),
+            const SizedBox(height: 12),
+            const Text("Aucune transaction", style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          ]),
+        )
+      else
+        ...transactions.map((tx) {
+          final isAdd = tx['type'].toString().contains('saving') || tx['type'].toString().contains('deposit');
+          final amount = double.tryParse(tx['amount'].toString()) ?? 0;
+          final date = tx['created_at']?.toString().split('T').first ?? '';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(16)),
+            child: Row(children: [
+              Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(color: (isAdd ? AppTheme.success : AppTheme.error).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                child: Icon(isAdd ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded, color: isAdd ? AppTheme.success : AppTheme.error, size: 20),
               ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTransactionItem(Map tx, bool isAdd) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: cardGrey, borderRadius: BorderRadius.circular(18)),
-      child: Row(
-        children: [
-          Icon(isAdd ? Icons.arrow_downward : Icons.arrow_upward, color: isAdd ? Colors.green : Colors.red, size: 20),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(isAdd ? "Dépôt Coffre" : "Retrait Coffre", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                Text(tx['created_at'].toString().split('T')[0], style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              ],
-            ),
-          ),
-          Text("${isAdd ? '+' : '-'} ${_fmf(double.parse(tx['amount'].toString()))} F", 
-            style: TextStyle(color: isAdd ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyHistory() {
-    return Center(
-      child: Column(
-        children: [
-          Icon(Icons.history_toggle_off, color: Colors.white10, size: 50),
-          const SizedBox(height: 10),
-          const Text("Aucune transaction pour le moment", style: TextStyle(color: Colors.white24, fontSize: 12)),
-        ],
-      ),
-    );
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(isAdd ? "Dépôt épargne" : "Retrait épargne", style: const TextStyle(color: AppTheme.textLight, fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(date, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+              ])),
+              Text("${isAdd ? '+' : '-'} ${_fmt(amount)} F", style: TextStyle(color: isAdd ? AppTheme.success : AppTheme.error, fontWeight: FontWeight.w700, fontSize: 15)),
+            ]),
+          );
+        }),
+    ]);
   }
 }

@@ -12,7 +12,7 @@ class FinancialDashboardScreen extends StatefulWidget {
   State<FinancialDashboardScreen> createState() => _FinancialDashboardScreenState();
 }
 
-class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
+class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> with WidgetsBindingObserver {
   List<dynamic> _transactions = [];
   bool _isLoading = true;
 
@@ -26,7 +26,21 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -48,11 +62,13 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
     _totalOut = 0;
     _byCategory = {};
 
+    const incomeTypes = ['deposit', 'transfer_in', 'tontine_payout', 'referral_bonus', 'saving'];
+
     for (final tx in _transactions) {
       final amount = double.tryParse(tx['amount'].toString()) ?? 0;
       final type   = tx['type'] as String? ?? '';
 
-      if (['deposit'].contains(type)) {
+      if (incomeTypes.contains(type)) {
         _totalIn += amount;
       } else {
         _totalOut += amount;
@@ -72,13 +88,20 @@ class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
 
   String _categoryLabel(String type) {
     switch (type) {
-      case 'deposit':    return 'Dépôts';
-      case 'withdrawal': return 'Retraits';
-      case 'transfer':   return 'Transferts';
-      case 'tontine_pay':return 'Tontines';
-      case 'airtime':    return 'Recharges';
-      case 'bill':       return 'Factures';
-      default:           return 'Autres';
+      case 'deposit':        return 'Dépôts';
+      case 'withdrawal':     return 'Retraits';
+      case 'transfer_in':    return 'Transferts reçus';
+      case 'transfer_out':   return 'Transferts envoyés';
+      case 'transfer':       return 'Transferts';
+      case 'tontine_pay':    return 'Cotisations';
+      case 'tontine_payout': return 'Cagnottes';
+      case 'airtime':        return 'Recharges';
+      case 'bill':           return 'Factures';
+      case 'referral_bonus': return 'Parrainage';
+      case 'caisse_fund':    return 'Fond caisse';
+      case 'social_donation':return 'Dons';
+      case 'saving':         return 'Épargne';
+      default:               return 'Autres';
     }
   }
 

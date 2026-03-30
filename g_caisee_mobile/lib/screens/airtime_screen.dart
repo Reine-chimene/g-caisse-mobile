@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class AirtimeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -11,35 +11,15 @@ class AirtimeScreen extends StatefulWidget {
 }
 
 class _AirtimeScreenState extends State<AirtimeScreen> {
-  final _phoneCtrl  = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
-
-  String  _selectedOperator = 'cm.mtn';
-  String  _rechargeType     = 'Crédit';
-  String  _dataPlan         = 'Jour';
-  bool    _isLoading        = false;
-
-  static const Color _orange = Color(0xFFFF7900);
-
-  static const Map<String, Map<String, dynamic>> _operators = {
-    'cm.mtn': {
-      'label': 'MTN',
-      'logo':  'assets/logo_mtn.jpg',
-      'color': Color(0xFFFFCC00),
-    },
-    'cm.orange': {
-      'label': 'Orange',
-      'logo':  'assets/logo_orange.jpg',
-      'color': Color(0xFFFF7900),
-    },
-    'cm.camtel': {
-      'label': 'Camtel',
-      'logo':  '',
-      'color': Color(0xFF0066CC),
-    },
-  };
+  String _selectedOperator = 'cm.mtn';
+  String _rechargeType = 'Crédit';
+  String _dataPlan = 'Jour';
+  bool _isLoading = false;
 
   static const List<String> _dataPlans = ['Jour', 'Semaine', 'Mois'];
+  static const _quickAmounts = [100, 250, 500, 1000, 2000, 5000];
 
   @override
   void initState() {
@@ -48,105 +28,20 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   }
 
   @override
-  void dispose() {
-    _phoneCtrl.dispose();
-    _amountCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _phoneCtrl.dispose(); _amountCtrl.dispose(); super.dispose(); }
 
-  double get _amount => double.tryParse(_amountCtrl.text) ?? 0.0;
-  double get _fees   => _amount * 0.02;
-  double get _total  => _amount + _fees;
+  double get _amount => double.tryParse(_amountCtrl.text) ?? 0;
 
-  void _showConfirmation() {
-    if (_phoneCtrl.text.isEmpty || _amount < 100) {
-      _showMsg("Veuillez remplir tous les champs (montant min. 100 F)", Colors.red);
-      return;
-    }
+  Color get _opColor => _selectedOperator == 'cm.orange' ? const Color(0xFFFF7900) : const Color(0xFFFFCC00);
+  String get _opLabel => _selectedOperator == 'cm.orange' ? 'Orange' : 'MTN';
+  String get _opLogo => _selectedOperator == 'cm.orange' ? 'assets/logo_orange.jpg' : 'assets/logo_mtn.jpg';
 
-    final opInfo = _operators[_selectedOperator]!;
-    final serviceLabel = _rechargeType == 'Crédit'
-        ? 'Recharge Crédit'
-        : 'Forfait Data ($_dataPlan)';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-                width: 50, height: 5,
-                decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 20),
-            const Text("Confirmation de la Recharge",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            _row("Service",    serviceLabel),
-            _row("Opérateur",  opInfo['label'] as String),
-            _row("Numéro",     _phoneCtrl.text),
-            _row("Montant",    "${_amount.toInt()} FCFA"),
-            const Divider(),
-            _row("Total", "${_amount.toInt()} FCFA", bold: true),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade100),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Tu seras redirigé vers Orange Money ou MTN MoMo pour payer.",
-                      style: TextStyle(fontSize: 12, color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: opInfo['color'] as Color,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15)),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _submitRecharge();
-                },
-                child: const Text("CONFIRMER ET PAYER",
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _submitRecharge() async {
+  Future<void> _submit() async {
+    if (_phoneCtrl.text.isEmpty || _amount < 100) { _showMsg("Montant minimum : 100 FCFA", AppTheme.error); return; }
     setState(() => _isLoading = true);
     try {
-      final userId = int.tryParse(widget.userData['id'].toString()) ?? 0;
-      final res = await ApiService.buyAirtimeOrData(
-        userId: userId,
+      await ApiService.buyAirtimeOrData(
+        userId: int.tryParse(widget.userData['id'].toString()) ?? 0,
         phoneNumber: _phoneCtrl.text.trim(),
         amount: _amount,
         operator: _selectedOperator,
@@ -154,283 +49,98 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         plan: _rechargeType == 'Data' ? _dataPlan : null,
       );
       if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      // Ouvrir la page de paiement
-      final paymentUrl = res['payment_url'] as String?;
-      if (paymentUrl != null) {
-        final uri = Uri.parse(paymentUrl);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
-        final reference = res['reference'] as String?;
-        if (reference != null && mounted) _showWaitingDialog(reference);
-      } else {
-        _showSuccessDialog();
-      }
+      _showSuccess();
     } catch (e) {
-      if (mounted) _showMsg(e.toString().replaceFirst('Exception: ', ''), Colors.red);
+      if (mounted) _showMsg(e.toString().replaceAll('Exception: ', ''), AppTheme.error);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showWaitingDialog(String reference) {
-    final opInfo = _operators[_selectedOperator]!;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: opInfo['color'] as Color),
-            const SizedBox(height: 20),
-            Text("Recharge ${opInfo['label']} en cours...", style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text("Réf: $reference", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            const SizedBox(height: 15),
-            const Text("Paie via Orange Money ou MTN MoMo dans le navigateur, puis reviens ici.",
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("FERMER")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: opInfo['color'] as Color),
-            onPressed: () async {
-              try {
-                final status = await ApiService.getDirectTransferStatus(reference);
-                if (status['status'] == 'completed') {
-                  Navigator.pop(ctx);
-                  _showSuccessDialog();
-                } else if (status['status'] == 'failed') {
-                  Navigator.pop(ctx);
-                  _showMsg("La recharge a échoué", Colors.red);
-                } else {
-                  _showMsg("Paiement en attente. Termine le paiement d'abord.", Colors.orange);
-                }
-              } catch (e) {
-                _showMsg("Erreur de vérification", Colors.red);
-              }
-            },
-            child: const Text("J'AI PAYÉ", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
+  void _showMsg(String m, Color c) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
 
-  void _showSuccessDialog() {
-    final serviceLabel = _rechargeType == 'Crédit'
-        ? 'Recharge Crédit'
-        : 'Forfait Data ($_dataPlan)';
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
-            const SizedBox(height: 16),
-            const Text("Recharge Réussie !",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(
-              "$serviceLabel de ${_amount.toInt()} FCFA activée sur ${_phoneCtrl.text}.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: _orange,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12))),
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              child: const Text("TERMINER",
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
-      ),
-    );
+  void _showSuccess() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: AppTheme.darkCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.check_circle_rounded, color: AppTheme.success, size: 72),
+        const SizedBox(height: 16),
+        const Text("Recharge réussie !", style: TextStyle(color: AppTheme.textLight, fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text("${_amount.toStringAsFixed(0)} FCFA envoyés sur ${_phoneCtrl.text}", textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+      ]),
+      actions: [SizedBox(width: double.infinity, child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: _opColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        onPressed: () { Navigator.pop(ctx); Navigator.pop(context); },
+        child: const Text("TERMINER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      ))],
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final opColor = _operators[_selectedOperator]!['color'] as Color;
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Recharge & Data",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+      backgroundColor: AppTheme.dark,
+      appBar: AppBar(title: const Text("Recharge", style: TextStyle(fontWeight: FontWeight.w800)), backgroundColor: AppTheme.dark, foregroundColor: AppTheme.textLight, elevation: 0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Opérateur",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            Row(
-              children: _operators.entries.map((e) {
-                final isSel = _selectedOperator == e.key;
-                final info  = e.value;
-                final color = info['color'] as Color;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedOperator = e.key),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: isSel ? color.withValues(alpha: 0.1) : Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                            color: isSel ? color : Colors.grey.shade300,
-                            width: 1.5),
-                      ),
-                      child: Column(
-                        children: [
-                          info['logo'].toString().isNotEmpty
-                              ? Image.asset(info['logo'] as String,
-                                  width: 36, height: 36,
-                                  errorBuilder: (_, __, ___) =>
-                                      Icon(Icons.phone_android, color: color, size: 36))
-                              : Icon(Icons.phone_android, color: color, size: 36),
-                          const SizedBox(height: 6),
-                          Text(info['label'] as String,
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  color: isSel ? color : Colors.black87)),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 25),
-
-            const Text("Type de service",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _typeChip('Crédit', Icons.phone_in_talk_rounded),
-                const SizedBox(width: 12),
-                _typeChip('Data', Icons.wifi_rounded),
-              ],
-            ),
-
-            if (_rechargeType == 'Data') ...[
-              const SizedBox(height: 16),
-              const Text("Validité du forfait",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
-                children: _dataPlans.map((p) {
-                  final isSel = _dataPlan == p;
-                  return GestureDetector(
-                    onTap: () => setState(() => _dataPlan = p),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.only(right: 10),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSel ? _orange : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(p,
-                          style: TextStyle(
-                              color: isSel ? Colors.white : Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13)),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-            const SizedBox(height: 25),
-
-            TextField(
-              controller: _phoneCtrl,
-              keyboardType: TextInputType.phone,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: "Numéro à recharger",
-                hintText: "6XXXXXXXX",
-                prefixIcon: const Icon(Icons.phone_android),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: opColor, width: 2),
-                    borderRadius: BorderRadius.circular(15)),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: "Montant (FCFA)",
-                prefixIcon: const Icon(Icons.monetization_on_outlined),
-                suffixText: "FCFA",
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: opColor, width: 2),
-                    borderRadius: BorderRadius.circular(15)),
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: opColor,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15)),
-                  elevation: 4,
-                ),
-                onPressed: _isLoading ? null : _showConfirmation,
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("VALIDER LA RECHARGE",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
-              ),
-            ),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _buildOperatorSelector(),
+          const SizedBox(height: 24),
+          _buildServiceType(),
+          if (_rechargeType == 'Data') ...[const SizedBox(height: 16), _buildDataPlans()],
+          const SizedBox(height: 24),
+          _buildPhoneField(),
+          const SizedBox(height: 16),
+          _buildQuickAmounts(),
+          const SizedBox(height: 12),
+          _buildAmountField(),
+          const SizedBox(height: 28),
+          _buildSubmitButton(),
+          const SizedBox(height: 16),
+          _buildInfoBox(),
+        ]),
       ),
     );
+  }
+
+  Widget _buildOperatorSelector() {
+    return Row(children: [
+      {'key': 'cm.mtn', 'label': 'MTN MoMo', 'logo': 'assets/logo_mtn.jpg', 'color': const Color(0xFFFFCC00)},
+      {'key': 'cm.orange', 'label': 'Orange Money', 'logo': 'assets/logo_orange.jpg', 'color': const Color(0xFFFF7900)},
+    ].map((op) {
+      final isSel = _selectedOperator == op['key'];
+      final color = op['color'] as Color;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _selectedOperator = op['key'] as String),
+          child: Container(
+            margin: EdgeInsets.only(right: op['key'] == 'cm.mtn' ? 10 : 0, left: op['key'] == 'cm.orange' ? 10 : 0),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: isSel ? color.withValues(alpha: 0.1) : AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: isSel ? color : Colors.transparent, width: 2),
+            ),
+            child: Column(children: [
+              Image.asset(op['logo'] as String, width: 40, height: 40, errorBuilder: (_, __, ___) => Icon(Icons.phone_android, color: color, size: 40)),
+              const SizedBox(height: 10),
+              Text(op['label'] as String, style: TextStyle(color: isSel ? color : AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: 12)),
+            ]),
+          ),
+        ),
+      );
+    }).toList());
+  }
+
+  Widget _buildServiceType() {
+    return Row(children: [
+      _typeChip('Crédit', Icons.phone_in_talk_rounded),
+      const SizedBox(width: 12),
+      _typeChip('Data', Icons.wifi_rounded),
+    ]);
   }
 
   Widget _typeChip(String type, IconData icon) {
@@ -440,42 +150,92 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSel ? _orange : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: isSel ? Colors.white : Colors.black54),
-            const SizedBox(width: 6),
-            Text(type,
-                style: TextStyle(
-                    color: isSel ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
+        decoration: BoxDecoration(color: isSel ? _opColor : AppTheme.darkCard, borderRadius: BorderRadius.circular(14)),
+        child: Row(children: [
+          Icon(icon, size: 16, color: isSel ? Colors.white : AppTheme.textMuted),
+          const SizedBox(width: 6),
+          Text(type, style: TextStyle(color: isSel ? Colors.white : AppTheme.textMuted, fontWeight: FontWeight.w700)),
+        ]),
       ),
     );
   }
 
-  Widget _row(String label, String value,
-      {Color color = Colors.black87, bool bold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-          Text(value,
-              style: TextStyle(
-                  color: color,
-                  fontWeight: bold ? FontWeight.bold : FontWeight.w600,
-                  fontSize: bold ? 16 : 13)),
-        ],
+  Widget _buildDataPlans() {
+    return Row(children: _dataPlans.map((p) {
+      final isSel = _dataPlan == p;
+      return GestureDetector(
+        onTap: () => setState(() => _dataPlan = p),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(color: isSel ? _opColor : AppTheme.darkSurface, borderRadius: BorderRadius.circular(12)),
+          child: Text(p, style: TextStyle(color: isSel ? Colors.white : AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+        ),
+      );
+    }).toList());
+  }
+
+  Widget _buildPhoneField() {
+    return TextField(
+      controller: _phoneCtrl, keyboardType: TextInputType.phone, style: const TextStyle(color: AppTheme.textLight, fontSize: 16, fontWeight: FontWeight.w600),
+      decoration: InputDecoration(
+        labelText: "Numéro à recharger", labelStyle: const TextStyle(color: AppTheme.textMuted),
+        prefixIcon: const Icon(Icons.phone_android_rounded, color: AppTheme.textMuted),
+        filled: true, fillColor: AppTheme.darkCard,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       ),
     );
   }
 
-  void _showMsg(String m, Color c) => ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m), backgroundColor: c, behavior: SnackBarBehavior.floating));
+  Widget _buildQuickAmounts() {
+    return Wrap(spacing: 10, runSpacing: 10, children: _quickAmounts.map((a) {
+      final isSel = _amount == a;
+      return GestureDetector(
+        onTap: () => setState(() => _amountCtrl.text = a.toString()),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(color: isSel ? _opColor : AppTheme.darkCard, borderRadius: BorderRadius.circular(12)),
+          child: Text("$a F", style: TextStyle(color: isSel ? Colors.white : AppTheme.textMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+        ),
+      );
+    }).toList());
+  }
+
+  Widget _buildAmountField() {
+    return TextField(
+      controller: _amountCtrl, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}),
+      style: const TextStyle(color: AppTheme.textLight, fontSize: 22, fontWeight: FontWeight.w800),
+      textAlign: TextAlign.center,
+      decoration: InputDecoration(
+        hintText: "0", hintStyle: TextStyle(color: AppTheme.textMuted.withValues(alpha: 0.3)),
+        suffixText: "FCFA", suffixStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 16),
+        filled: true, fillColor: AppTheme.darkCard,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return SizedBox(width: double.infinity, height: 56, child: ElevatedButton(
+      style: ElevatedButton.styleFrom(backgroundColor: _opColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+      onPressed: _isLoading ? null : _submit,
+      child: _isLoading
+          ? const CircularProgressIndicator(color: Colors.white)
+          : Text("RECHARGER ${_amount > 0 ? '${_amount.toStringAsFixed(0)} F' : ''}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+    ));
+  }
+
+  Widget _buildInfoBox() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: AppTheme.darkCard, borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        const Icon(Icons.info_outline_rounded, color: AppTheme.textMuted, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text("Le montant est débité de ton solde G-Caisse et envoyé directement sur le numéro choisi.", style: TextStyle(color: AppTheme.textMuted.withValues(alpha: 0.8), fontSize: 12))),
+      ]),
+    );
+  }
 }
