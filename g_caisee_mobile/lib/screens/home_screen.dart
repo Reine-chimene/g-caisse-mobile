@@ -325,10 +325,12 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
   }
 
   void _showDepositWaitingDialog(int userId, String reference) {
+    bool isChecking = false;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.darkCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -342,13 +344,19 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
         actions: [
           SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            onPressed: () async {
-              // Vérifier le statut du dépôt via Notch Pay
+            onPressed: isChecking ? null : () async {
+              setDialogState(() => isChecking = true);
               try {
-                final status = await ApiService.checkDepositStatus(reference);
+                // Vérifier le statut du dépôt via Notch Pay (avec retry)
+                Map<String, dynamic> status = {};
+                for (int attempt = 0; attempt < 3; attempt++) {
+                  status = await ApiService.checkDepositStatus(reference);
+                  if (status['status'] == 'complete') break;
+                  if (attempt < 2) await Future.delayed(const Duration(seconds: 3));
+                }
+
                 if (status['status'] == 'complete') {
-                  final balance = double.tryParse(status['amount']?.toString() ?? '0') ?? 0;
-                  _loadData(); // Rafraîchir le solde
+                  _loadData();
                   if (mounted) {
                     Navigator.pop(ctx);
                     _showSuccessDialog('Dépôt effectué avec succès ✅');
@@ -357,8 +365,8 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                   // Vérifier aussi le solde directement
                   final data = await ApiService.verifyDeposits(userId);
                   final newBalance = double.tryParse(data['balance'].toString()) ?? 0;
+                  _loadData();
                   if (mounted) {
-                    setState(() => totalBalance = newBalance);
                     Navigator.pop(ctx);
                     if (newBalance > 0) {
                       _showSuccessDialog('Solde mis à jour : ${newBalance.toStringAsFixed(0)} FCFA ✅');
@@ -374,10 +382,13 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 if (mounted) Navigator.pop(ctx);
               }
             },
-            child: const Text("J'AI PAYÉ — VÉRIFIER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            child: isChecking
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text("J'AI PAYÉ — VÉRIFIER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           )),
           TextButton(onPressed: () { Navigator.pop(ctx); _loadData(); }, child: const Text("Fermer", style: TextStyle(color: AppTheme.textMuted))),
         ],
+      ),
       ),
     );
   }

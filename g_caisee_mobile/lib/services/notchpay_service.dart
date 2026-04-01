@@ -17,16 +17,17 @@ class NotchPayService {
     required String phone,
     required String name,
   }) async {
-    final reference = 'DEP_${userId}_${DateTime.now().millisecondsSinceEpoch}';
-    final res = await ApiService.initiatePayment(userId, phone, amount, name: name, reference: reference);
+    final res = await ApiService.initiatePayment(userId, phone, amount, name: name);
     final paymentUrl = res['payment_url'] as String?;
     if (paymentUrl == null) throw Exception("URL de paiement manquante");
+
+    // Utiliser la référence retournée par le serveur (DEP_<userId>_<timestamp>)
+    final reference = res['reference'] as String? ?? '';
 
     final uri = Uri.parse(paymentUrl);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw Exception("Impossible d'ouvrir la page de paiement");
     }
-    // Retourner la référence pour vérification du statut
     return reference;
   }
 
